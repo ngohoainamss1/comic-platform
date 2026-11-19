@@ -1,10 +1,16 @@
 import os
 import shutil
+import tempfile
 import argparse
 import httpx
 import libsql_client
 from slugify import slugify
 from dotenv import load_dotenv
+
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
 
 from scripts.pipeline.slicer import slice_webtoon_image
 from scripts.pipeline.compressor import compress_to_avif
@@ -21,7 +27,7 @@ TG_ADMIN_ID = os.getenv("TG_ADMIN_CHAT_ID", "")
 GH_TOKEN = os.getenv("GH_TOKEN", "")
 GH_BACKUP_REPO = os.getenv("GH_BACKUP_REPO", "")
 
-TEMP_DIR = "/tmp/comic_ingest_work"
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "comic_ingest_work")
 
 
 def get_db():
@@ -42,10 +48,24 @@ def send_admin_telegram(message: str):
 def download_image(url: str, dest_path: str, referer: str = ""):
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     }
     if referer:
         headers["Referer"] = referer
+
+    if curl_requests is not None:
+        res = curl_requests.get(
+            url, headers=headers, impersonate="chrome", timeout=30, allow_redirects=True
+        )
+        res.raise_for_status()
+        with open(dest_path, "wb") as f:
+            f.write(res.content)
+        return
+
     with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
         res = client.get(url)
         res.raise_for_status()
