@@ -2,9 +2,51 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { verifyImageSignature } from '../utils/crypto';
 
-export const imageProxyRoutes = new Hono<{ Bindings: Env }>();
+export const imageProxyRoutes = new Hono<{ Bindings: Env & { ALLOWED_ORIGINS?: string } }>();
 
 const BLOCKED_SCRAPER_ASNS = new Set([14061, 16509, 14618, 24940, 16276, 20473, 63949]);
+
+function isAllowedRefererOrOrigin(
+  originHeader: string | undefined,
+  refererHeader: string | undefined,
+  workerHost: string,
+  allowedOriginsEnv?: string
+): boolean {
+  const source = originHeader || refererHeader;
+  if (!source) return true;
+
+  try {
+    const parsed = new URL(source);
+    const host = parsed.hostname.toLowerCase();
+
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === workerHost.toLowerCase() ||
+      host.endsWith('.pages.dev')
+    ) {
+      return true;
+    }
+
+    if (allowedOriginsEnv) {
+      const allowedList = allowedOriginsEnv
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+
+      return allowedList.some((allowed) => {
+        if (allowed.startsWith('http://') || allowed.startsWith('https://')) {
+          return parsed.origin.toLowerCase() === allowed;
+        }
+        return host === allowed || host.endsWith(`.${allowed}`);
+      });
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 async function fetchFromTelegram(fileId: string, botToken: string): Promise<Response | null> {
   try {
@@ -63,8 +105,14 @@ imageProxyRoutes.get('/:fileId/:sig/:expFile', async (c) => {
     return c.text('Truy cập bị từ chối.', 403);
   }
 
-  const fetchSite = c.req.header('Sec-Fetch-Site');
-  if (fetchSite && fetchSite === 'cross-site') {
+  const workerHost = new URL(c.req.url).hostname;
+  const allowed = isAllowedRefererOrOrigin(
+    c.req.header('Origin'),
+    c.req.header('Referer'),
+    workerHost,
+    c.env.ALLOWED_ORIGINS
+  );
+  if (!allowed) {
     return c.text('Không được phép nhúng ảnh từ tên miền khác.', 403);
   }
 
@@ -79,6 +127,8 @@ imageProxyRoutes.get('/:fileId/:sig/:expFile', async (c) => {
 
   if (cachedResponse) {
     const hitHeaders = new Headers(cachedResponse.headers);
+    hitHeaders.set('Access-Control-Allow-Origin', '*');
+    hitHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
     hitHeaders.set('X-Cache', 'HIT');
     return new Response(cachedResponse.body, {
       status: 200,
@@ -107,6 +157,7 @@ imageProxyRoutes.get('/:fileId/:sig/:expFile', async (c) => {
   responseHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
   responseHeaders.set('CDN-Cache-Control', 'max-age=31536000');
   responseHeaders.set('Access-Control-Allow-Origin', '*');
+  responseHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
   responseHeaders.set('X-Cache', 'MISS');
   responseHeaders.set('X-Origin-Source', sourceHeader);
 
