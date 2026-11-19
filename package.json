@@ -1,0 +1,10 @@
+{
+  "name": "comic-platform",
+  "private": true,
+  "scripts": {
+    "dev:worker": "pnpm --filter @comic/worker dev",
+    "deploy:worker": "pnpm --filter @comic/worker deploy",
+    "dev:web": "pnpm --filter @comic/web dev",
+    "build:web": "pnpm --filter @comic/web build"
+  }
+}

@@ -1,0 +1,79 @@
+name: Deploy Frontend & Worker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Deploy Cloudflare Worker & Secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          HMAC_SECRET_KEY: ${{ secrets.HMAC_SECRET_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_BACKUP_REPO: ${{ secrets.GH_BACKUP_REPO }}
+        run: |
+          jq -n \
+            --arg turso_url "$TURSO_DATABASE_URL" \
+            --arg turso_token "$TURSO_AUTH_TOKEN" \
+            --arg hmac "$HMAC_SECRET_KEY" \
+            --arg tg_token "$TG_BOT_TOKEN" \
+            --arg gh_token "$GH_TOKEN" \
+            --arg gh_repo "$GH_BACKUP_REPO" \
+            '{
+              TURSO_DATABASE_URL: $turso_url,
+              TURSO_AUTH_TOKEN: $turso_token,
+              HMAC_SECRET_KEY: $hmac,
+              TG_BOT_TOKEN: $tg_token,
+              GH_TOKEN: $gh_token,
+              GH_BACKUP_REPO: $gh_repo
+            }' > secrets.json
+          npx wrangler secret bulk secrets.json
+          rm -f secrets.json
+          npx wrangler deploy
+
+  deploy-web:
+    needs: deploy-worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Build & Deploy Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_MIRROR_GIST_URL: ${{ secrets.VITE_MIRROR_GIST_URL }}
+        run: |
+          pnpm build
+          npx wrangler pages deploy dist --project-name=comic-platform --branch=main

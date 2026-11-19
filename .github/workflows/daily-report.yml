@@ -1,0 +1,24 @@
+name: Daily Health & Anti-Block Report
+
+on:
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install httpx libsql-client python-dotenv
+      - name: Gửi báo cáo 23:00 UTC+7 về Telegram Admin
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+          VITE_MIRROR_GIST_URL: ${{ secrets.VITE_MIRROR_GIST_URL }}
+        run: python -m scripts.report.daily_health

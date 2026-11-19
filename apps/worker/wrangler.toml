@@ -1,0 +1,8 @@
+name = "comic-worker"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+account_id = "3f15c74299bb093bf4873dedc589e9b1"
+
+[vars]
+ENVIRONMENT = "production"
+IMAGE_TOKEN_TTL_SECONDS = "900"

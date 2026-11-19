@@ -1,0 +1,336 @@
+import { Hono } from 'hono';
+import type { InValue } from '@libsql/client/web';
+import type { Env } from '../types';
+import { getDb } from '../db/client';
+import { signImageUrl } from '../utils/crypto';
+
+export const apiRoutes = new Hono<{ Bindings: Env }>();
+
+apiRoutes.get('/genres', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const result = await db.execute('SELECT id, slug, name FROM genres ORDER BY name ASC');
+    return c.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Lỗi tải thể loại:', err);
+    return c.json({ success: false, message: 'Không thể tải danh sách thể loại.' }, 500);
+  }
+});
+
+apiRoutes.get('/comics', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const q = (c.req.query('q') || '').trim();
+    const sort = c.req.query('sort') || 'latest';
+    const status = c.req.query('status') || 'all';
+    const incRaw = (c.req.query('inc') || '').trim();
+    const excRaw = (c.req.query('exc') || '').trim();
+
+    const incSlugs = incRaw ? incRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const excSlugs = excRaw ? excRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
+    const conditions: string[] = ['1 = 1'];
+    const args: InValue[] = [];
+
+    if (q) {
+      conditions.push('(c.title LIKE ? OR c.alt_titles LIKE ?)');
+      const keyword = `%${q}%`;
+      args.push(keyword, keyword);
+    }
+
+    if (status === 'ongoing' || status === 'completed') {
+      conditions.push('c.status = ?');
+      args.push(status);
+    }
+
+    for (const slug of incSlugs) {
+      conditions.push(
+        'EXISTS (SELECT 1 FROM comic_genres cg JOIN genres g ON cg.genre_id = g.id WHERE cg.comic_id = c.id AND g.slug = ?)'
+      );
+      args.push(slug);
+    }
+
+    for (const slug of excSlugs) {
+      conditions.push(
+        'NOT EXISTS (SELECT 1 FROM comic_genres cg JOIN genres g ON cg.genre_id = g.id WHERE cg.comic_id = c.id AND g.slug = ?)'
+      );
+      args.push(slug);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    let orderBy = 'c.updated_at DESC';
+    switch (sort) {
+      case 'top-day':
+        orderBy = 'c.views_day DESC, c.updated_at DESC';
+        break;
+      case 'top-week':
+        orderBy = 'c.views_week DESC, c.updated_at DESC';
+        break;
+      case 'top-month':
+        orderBy = 'c.views_month DESC, c.updated_at DESC';
+        break;
+      case 'rating':
+        orderBy = 'c.rating_avg DESC, c.views_total DESC';
+        break;
+      default:
+        orderBy = 'c.updated_at DESC';
+    }
+
+    const countSql = `SELECT COUNT(*) AS total FROM comics c WHERE ${whereClause}`;
+    const countRes = await db.execute({ sql: countSql, args });
+    const total = Number(countRes.rows[0]?.total || 0);
+
+    const listSql = `
+      SELECT
+        c.id,
+        c.slug,
+        c.title,
+        c.cover_file_id,
+        c.cover_gh_path,
+        c.status,
+        c.views_day,
+        c.views_week,
+        c.views_month,
+        c.views_total,
+        c.rating_avg,
+        c.updated_at,
+        (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter
+      FROM comics c
+      WHERE ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `;
+
+    const listRes = await db.execute({
+      sql: listSql,
+      args: [...args, limit, offset],
+    });
+
+    const ttl = Number(c.env.IMAGE_TOKEN_TTL_SECONDS || 900);
+    const items = await Promise.all(
+      listRes.rows.map(async (row) => {
+        const coverFileId = String(row.cover_file_id || '');
+        const coverGhPath = String(row.cover_gh_path || '');
+        const coverUrl = coverFileId
+          ? await signImageUrl(coverFileId, c.env.HMAC_SECRET_KEY, ttl, coverGhPath)
+          : '';
+
+        return {
+          id: Number(row.id),
+          slug: String(row.slug),
+          title: String(row.title),
+          cover_url: coverUrl,
+          status: String(row.status),
+          views_day: Number(row.views_day || 0),
+          views_week: Number(row.views_week || 0),
+          views_month: Number(row.views_month || 0),
+          views_total: Number(row.views_total || 0),
+          rating_avg: Number(row.rating_avg || 5.0),
+          latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+          updated_at: String(row.updated_at),
+        };
+      })
+    );
+
+    return c.json({
+      success: true,
+      data: items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error('Lỗi tải danh sách truyện:', err);
+    return c.json({ success: false, message: 'Không thể tải danh sách truyện.' }, 500);
+  }
+});
+
+apiRoutes.get('/comics/:slug', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const db = getDb(c.env);
+
+    const comicRes = await db.execute({
+      sql: 'SELECT * FROM comics WHERE slug = ? LIMIT 1',
+      args: [slug],
+    });
+
+    if (comicRes.rows.length === 0) {
+      return c.json({ success: false, message: 'Không tìm thấy bộ truyện này.' }, 404);
+    }
+
+    const comic = comicRes.rows[0];
+    const comicId = Number(comic.id);
+
+    const [genresRes, chaptersRes] = await Promise.all([
+      db.execute({
+        sql: `
+          SELECT g.id, g.slug, g.name
+          FROM genres g
+          JOIN comic_genres cg ON g.id = cg.genre_id
+          WHERE cg.comic_id = ?
+          ORDER BY g.name ASC
+        `,
+        args: [comicId],
+      }),
+      db.execute({
+        sql: `
+          SELECT id, chapter_number, title, views, created_at
+          FROM chapters
+          WHERE comic_id = ?
+          ORDER BY chapter_number DESC
+        `,
+        args: [comicId],
+      }),
+    ]);
+
+    const ttl = Number(c.env.IMAGE_TOKEN_TTL_SECONDS || 900);
+    const coverFileId = String(comic.cover_file_id || '');
+    const coverGhPath = String(comic.cover_gh_path || '');
+    const coverUrl = coverFileId
+      ? await signImageUrl(coverFileId, c.env.HMAC_SECRET_KEY, ttl, coverGhPath)
+      : '';
+
+    return c.json({
+      success: true,
+      data: {
+        id: comicId,
+        slug: String(comic.slug),
+        title: String(comic.title),
+        alt_titles: String(comic.alt_titles || ''),
+        description: String(comic.description || ''),
+        cover_url: coverUrl,
+        status: String(comic.status),
+        views_total: Number(comic.views_total || 0),
+        rating_avg: Number(comic.rating_avg || 5.0),
+        rating_count: Number(comic.rating_count || 1),
+        updated_at: String(comic.updated_at),
+        genres: genresRes.rows,
+        chapters: chaptersRes.rows,
+      },
+    });
+  } catch (err) {
+    console.error('Lỗi tải chi tiết truyện:', err);
+    return c.json({ success: false, message: 'Không thể tải thông tin chi tiết truyện.' }, 500);
+  }
+});
+
+apiRoutes.get('/chapters/:id/pages', async (c) => {
+  try {
+    const chapterId = Number(c.req.param('id'));
+    if (!Number.isFinite(chapterId) || chapterId <= 0) {
+      return c.json({ success: false, message: 'Mã chương không hợp lệ.' }, 400);
+    }
+
+    const db = getDb(c.env);
+
+    const chapterRes = await db.execute({
+      sql: `
+        SELECT ch.id, ch.comic_id, ch.chapter_number, ch.title, c.slug AS comic_slug, c.title AS comic_title
+        FROM chapters ch
+        JOIN comics c ON ch.comic_id = c.id
+        WHERE ch.id = ?
+        LIMIT 1
+      `,
+      args: [chapterId],
+    });
+
+    if (chapterRes.rows.length === 0) {
+      return c.json({ success: false, message: 'Không tìm thấy chương truyện này.' }, 404);
+    }
+
+    const [pagesRes, navRes] = await Promise.all([
+      db.execute({
+        sql: `
+          SELECT id, page_index, tg_file_id, gh_fallback_path, width, height, format
+          FROM chapter_pages
+          WHERE chapter_id = ?
+          ORDER BY page_index ASC
+        `,
+        args: [chapterId],
+      }),
+      db.execute({
+        sql: `
+          SELECT id, chapter_number
+          FROM chapters
+          WHERE comic_id = ?
+          ORDER BY chapter_number ASC
+        `,
+        args: [Number(chapterRes.rows[0].comic_id)],
+      }),
+    ]);
+
+    const ttl = Number(c.env.IMAGE_TOKEN_TTL_SECONDS || 900);
+    const pages = await Promise.all(
+      pagesRes.rows.map(async (row) => {
+        const fileId = String(row.tg_file_id);
+        const ghPath = String(row.gh_fallback_path || '');
+        const signedUrl = await signImageUrl(fileId, c.env.HMAC_SECRET_KEY, ttl, ghPath);
+        return {
+          index: Number(row.page_index),
+          url: signedUrl,
+          width: Number(row.width || 1080),
+          height: Number(row.height || 1400),
+          format: String(row.format || 'avif'),
+        };
+      })
+    );
+
+    const allChapters = navRes.rows;
+    const currentIdx = allChapters.findIndex((ch) => Number(ch.id) === chapterId);
+    const prevChapter = currentIdx > 0 ? allChapters[currentIdx - 1] : null;
+    const nextChapter =
+      currentIdx >= 0 && currentIdx < allChapters.length - 1
+        ? allChapters[currentIdx + 1]
+        : null;
+
+    return c.json({
+      success: true,
+      data: {
+        chapter: chapterRes.rows[0],
+        prev_chapter: prevChapter,
+        next_chapter: nextChapter,
+        pages,
+      },
+    });
+  } catch (err) {
+    console.error('Lỗi tải trang chương:', err);
+    return c.json({ success: false, message: 'Không thể tải danh sách trang ảnh.' }, 500);
+  }
+});
+
+apiRoutes.post('/comics/:id/view', async (c) => {
+  try {
+    const comicId = Number(c.req.param('id'));
+    if (!Number.isFinite(comicId) || comicId <= 0) {
+      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await db.execute({
+      sql: `
+        UPDATE comics
+        SET
+          views_day = views_day + 1,
+          views_week = views_week + 1,
+          views_month = views_month + 1,
+          views_total = views_total + 1
+        WHERE id = ?
+      `,
+      args: [comicId],
+    });
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('Lỗi cập nhật lượt xem:', err);
+    return c.json({ success: false, message: 'Không thể cập nhật lượt xem.' }, 500);
+  }
+});
