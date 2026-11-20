@@ -1,3 +1,4 @@
+import os
 import re
 import time
 from urllib.parse import urljoin, urlparse
@@ -17,6 +18,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
     def __init__(self, base_url: str, feed_url: str, delay_seconds: float = 0.8):
         super().__init__(base_url, feed_url)
         self.delay_seconds = delay_seconds
+        self.cookie_header = os.getenv("CRAWLER_COOKIE", "").strip()
+        self.proxy_url = os.getenv("CRAWLER_PROXY", "").strip()
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -26,6 +29,15 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
             "Upgrade-Insecure-Requests": "1",
         }
+        if self.cookie_header:
+            self.headers["Cookie"] = self.cookie_header
+
+        self._curl_session = curl_requests.Session() if curl_requests is not None else None
+        self._httpx_client = httpx.Client(
+            timeout=25.0,
+            follow_redirects=True,
+            proxy=self.proxy_url or None,
+        )
 
     def _origin_of(self, url: str) -> str:
         parsed = urlparse(url)
@@ -59,23 +71,24 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 req_headers["Referer"] = current_ref
 
             try:
-                if curl_requests is not None:
-                    curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if CurlOpt else {}
-                    res = curl_requests.get(
+                if self._curl_session is not None:
+                    curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not self.proxy_url) else {}
+                    proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
+                    res = self._curl_session.get(
                         url,
                         headers=req_headers,
                         impersonate=profiles[(attempt - 1) % len(profiles)],
                         timeout=25,
                         allow_redirects=True,
+                        proxies=proxies,
                         curl_options=curl_opts,
                     )
                     res.raise_for_status()
                     return res.text
 
-                with httpx.Client(timeout=25.0, follow_redirects=True, headers=req_headers) as client:
-                    res = client.get(url)
-                    res.raise_for_status()
-                    return res.text
+                res = self._httpx_client.get(url, headers=req_headers)
+                res.raise_for_status()
+                return res.text
             except Exception as err:
                 last_err = err
 
@@ -203,11 +216,19 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             chapters=chapters,
         )
 
-    def fetch_chapter_images(self, chapter_url: str) -> list[str]:
-        html = self._get(chapter_url, referer=self._origin_of(chapter_url))
+    def fetch_chapter_images(self, chapter_url: str, referer_url: str = "") -> list[str]:
+        ref = referer_url or self._origin_of(chapter_url)
+        html = self._get(chapter_url, referer=ref)
         soup = BeautifulSoup(html, "html.parser")
-        imgs: list[str] = []
+        page_title = soup.title.get_text(strip=True) if soup.title else "No Title"
 
+        if "login" in page_title.lower() or "đăng nhập" in page_title.lower():
+            raise RuntimeError(
+                f"Trang bị chuyển hướng sang Login ('{page_title}') tại {chapter_url}. "
+                "Nguồn chặn IP nước ngoài của GitHub Actions hoặc yêu cầu Cookie đăng nhập (CRAWLER_COOKIE)."
+            )
+
+        imgs: list[str] = []
         skip_keywords = (
             "logo", "loading", "loader", "spinner", "icon", "banner",
             "ads", "advert", "donate", "credit", "avatar", "facebook",
@@ -242,7 +263,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 return False
             return True
 
-        # Lớp 1: Các selector vùng đọc truyện phổ biến
         reader_selectors = (
             ".reading-detail .page-chapter img, .reading-detail img, "
             ".reading-content img, .reading-box img, .read-content img, .reading img, "
@@ -262,7 +282,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         if imgs:
             return imgs
 
-        # Lớp 2: Quét tất cả thẻ <img> trong phần nội dung chính
         excluded_tags = {"header", "footer", "nav", "aside"}
         excluded_tokens = (
             "header", "footer", "navbar", "sidebar", "related", "recommend",
@@ -298,7 +317,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         if imgs:
             return imgs
 
-        # Lớp 3: Trích xuất mảng URL ảnh nhúng trong thẻ <script>
         url_pattern = re.compile(
             r"""["']((?:https?:)?//[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s<>\\]*)?)["']""",
             re.IGNORECASE,
@@ -315,7 +333,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                             imgs.append(normalized)
 
         if not imgs:
-            page_title = soup.title.get_text(strip=True) if soup.title else "No Title"
             total_imgs = len(soup.find_all("img"))
             raise RuntimeError(
                 f"Không tìm thấy ảnh nào trong chương (URL={chapter_url}, Title='{page_title}', TotalImgTags={total_imgs})."
