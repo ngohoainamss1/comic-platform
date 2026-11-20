@@ -30,6 +30,8 @@ TG_CHANNEL_ID = os.getenv("TG_STORAGE_CHANNEL_ID", "")
 TG_ADMIN_ID = os.getenv("TG_ADMIN_CHAT_ID", "")
 GH_TOKEN = os.getenv("GH_TOKEN", "")
 GH_BACKUP_REPO = os.getenv("GH_BACKUP_REPO", "")
+CRAWLER_COOKIE = os.getenv("CRAWLER_COOKIE", "").strip()
+CRAWLER_PROXY = os.getenv("CRAWLER_PROXY", "").strip()
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "comic_ingest_work")
 
@@ -97,11 +99,14 @@ def download_image(url: str, dest_path: str, referer: str = ""):
         }
         if current_ref:
             headers["Referer"] = current_ref
+        if CRAWLER_COOKIE:
+            headers["Cookie"] = CRAWLER_COOKIE
 
         try:
             time.sleep(0.25 * attempt)
             if curl_requests is not None:
-                curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if CurlOpt else {}
+                curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not CRAWLER_PROXY) else {}
+                proxies = {"http": CRAWLER_PROXY, "https": CRAWLER_PROXY} if CRAWLER_PROXY else None
                 res = curl_requests.get(
                     url,
                     headers=headers,
@@ -109,6 +114,7 @@ def download_image(url: str, dest_path: str, referer: str = ""):
                     http_version=CurlHttpVersion.V1_1,
                     timeout=30,
                     allow_redirects=True,
+                    proxies=proxies,
                     curl_options=curl_opts,
                 )
                 res.raise_for_status()
@@ -118,7 +124,12 @@ def download_image(url: str, dest_path: str, referer: str = ""):
                     f.write(res.content)
                 return
 
-            with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+            with httpx.Client(
+                timeout=30.0,
+                follow_redirects=True,
+                headers=headers,
+                proxy=CRAWLER_PROXY or None,
+            ) as client:
                 res = client.get(url)
                 res.raise_for_status()
                 with open(dest_path, "wb") as f:
@@ -176,10 +187,10 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
 
     db_exec(
         db_state,
-        '''
+        """
         INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''',
+        """,
         [slug, detail.title, detail.alt_titles, detail.description, cover_file_id, cover_gh_path, detail.status],
     )
     row = db_exec(db_state, "SELECT id FROM comics WHERE slug = ? LIMIT 1", [slug])
@@ -203,6 +214,12 @@ def run_sync(single_comic_url: str = ""):
     new_comics_log: list[str] = []
     new_chapters_log: list[str] = []
     target_slugs: list[str] = []
+    adapters_by_origin: dict[str, StandardHtmlRssAdapter] = {}
+
+    def get_adapter(origin: str, feed_url: str) -> StandardHtmlRssAdapter:
+        if origin not in adapters_by_origin:
+            adapters_by_origin[origin] = StandardHtmlRssAdapter(origin, feed_url)
+        return adapters_by_origin[origin]
 
     try:
         if single_comic_url:
@@ -216,10 +233,10 @@ def run_sync(single_comic_url: str = ""):
             if not src_rows:
                 db_exec(
                     db_state,
-                    '''
+                    """
                     INSERT INTO sync_sources (name, base_url, feed_url, adapter_type, is_active)
                     VALUES (?, ?, ?, 'standard', 0)
-                    ''',
+                    """,
                     [parsed.netloc, origin, single_comic_url],
                 )
                 src_rows = db_exec(
@@ -240,7 +257,7 @@ def run_sync(single_comic_url: str = ""):
 
         for src in sources:
             src_id, _, base_url, feed_url = int(src[0]), str(src[1]), str(src[2]), str(src[3])
-            adapter = StandardHtmlRssAdapter(base_url, feed_url)
+            adapter = get_adapter(base_url, feed_url)
 
             if single_comic_url:
                 targets = [single_comic_url]
@@ -276,11 +293,11 @@ def run_sync(single_comic_url: str = ""):
                         if ch.chapter_number not in existing_nums:
                             db_exec(
                                 db_state,
-                                '''
+                                """
                                 INSERT OR IGNORE INTO sync_jobs
                                 (source_id, comic_slug, chapter_number, source_chapter_url, status)
                                 VALUES (?, ?, ?, ?, 'pending')
-                                ''',
+                                """,
                                 [src_id, slug, ch.chapter_number, ch.url],
                             )
                             queued += 1
@@ -298,24 +315,28 @@ def run_sync(single_comic_url: str = ""):
             if not target_slugs:
                 print("[Dừng] Không lấy được danh sách chương từ URL đã nhập.")
                 return
+            db_exec(
+                db_state,
+                "UPDATE sync_jobs SET retry_count = 0 WHERE status = 'pending' AND comic_slug = ?",
+                [target_slugs[0]],
+            )
             jobs_res = db_exec(
                 db_state,
-                '''
+                """
                 SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url
                 FROM sync_jobs j
                 JOIN sync_sources s ON j.source_id = s.id
                 WHERE j.status = 'pending'
-                  AND j.retry_count < 3
                   AND j.comic_slug = ?
                 ORDER BY j.chapter_number ASC, j.created_at ASC
                 LIMIT 20
-                ''',
+                """,
                 [target_slugs[0]],
             )
         else:
             jobs_res = db_exec(
                 db_state,
-                '''
+                """
                 SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url
                 FROM sync_jobs j
                 JOIN sync_sources s ON j.source_id = s.id
@@ -324,7 +345,7 @@ def run_sync(single_comic_url: str = ""):
                   AND s.is_active = 1
                 ORDER BY j.chapter_number ASC, j.created_at ASC
                 LIMIT 20
-                ''',
+                """,
             )
 
         if not jobs_res.rows:
@@ -351,8 +372,8 @@ def run_sync(single_comic_url: str = ""):
             chapter_id = None
 
             try:
-                adapter = StandardHtmlRssAdapter(chap_origin, chap_origin)
-                img_urls = adapter.fetch_chapter_images(chap_url)
+                adapter = get_adapter(chap_origin, chap_origin)
+                img_urls = adapter.fetch_chapter_images(chap_url, referer_url=single_comic_url or chap_origin)
                 if not img_urls:
                     raise RuntimeError("Không tìm thấy ảnh nào trong chương.")
 
@@ -405,11 +426,11 @@ def run_sync(single_comic_url: str = ""):
 
                         db_exec(
                             db_state,
-                            '''
+                            """
                             INSERT INTO chapter_pages
                             (chapter_id, page_index, tg_file_id, gh_fallback_path, width, height, format)
                             VALUES (?, ?, ?, ?, ?, ?, 'avif')
-                            ''',
+                            """,
                             [chapter_id, page_idx, tg_file_id, gh_path, meta["width"], meta["height"]],
                         )
                         page_idx += 1
@@ -428,11 +449,11 @@ def run_sync(single_comic_url: str = ""):
                     db_exec(db_state, "DELETE FROM chapter_pages WHERE chapter_id = ?", [chapter_id])
                 db_exec(
                     db_state,
-                    '''
+                    """
                     UPDATE sync_jobs
                     SET status = 'pending', retry_count = retry_count + 1, error_log = ?
                     WHERE id = ?
-                    ''',
+                    """,
                     [str(err)[:500], job_id],
                 )
                 print(f"     [Lỗi xử lý job {job_id}] {err}")
@@ -462,3 +483,4 @@ if __name__ == "__main__":
     parser.add_argument("--comic-url", type=str, default="", help="URL bộ truyện cần cào ngay")
     args = parser.parse_args()
     run_sync(single_comic_url=args.comic_url.strip())
+            
