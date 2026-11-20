@@ -214,20 +214,9 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             "zalo", "telegram", "discord", "qr", "placeholder", "1x1", "blank"
         )
         img_attrs = (
-            "data-original",
-            "data-src",
-            "data-cdn",
-            "data-sv1",
-            "data-sv2",
-            "data-lazy-src",
-            "data-lazy",
-            "data-url",
-            "data-image",
-            "data-img",
-            "data-echo",
-            "data-cfsrc",
-            "data-full-src",
-            "src",
+            "data-original", "data-src", "data-cdn", "data-sv1", "data-sv2",
+            "data-lazy-src", "data-lazy", "data-url", "data-image",
+            "data-img", "data-echo", "data-cfsrc", "data-full-src", "src",
         )
 
         def _extract_src(img_tag) -> str:
@@ -266,4 +255,70 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         for img in soup.select(reader_selectors):
             src = _extract_src(img)
             if _is_valid(src):
-                
+                normalized = self._normalize_url(src, chapter_url)
+                if normalized not in imgs:
+                    imgs.append(normalized)
+
+        if imgs:
+            return imgs
+
+        # Lớp 2: Quét tất cả thẻ <img> trong phần nội dung chính
+        excluded_tags = {"header", "footer", "nav", "aside"}
+        excluded_tokens = (
+            "header", "footer", "navbar", "sidebar", "related", "recommend",
+            "comment", "modal", "popup", "menu", "breadcrumb", "social", "ads"
+        )
+        for img in soup.find_all("img"):
+            if any(
+                p.name in excluded_tags
+                or any(
+                    tok in (" ".join(p.get("class") or []) + " " + (p.get("id") or "")).lower()
+                    for tok in excluded_tokens
+                )
+                for p in img.parents
+            ):
+                continue
+
+            src = _extract_src(img)
+            if not _is_valid(src):
+                continue
+
+            meta_hint = (
+                f"{img.get('alt') or ''} {img.get('id') or ''} "
+                f"{' '.join(img.get('class') or [])} {src}"
+            ).lower()
+            if any(
+                h in meta_hint
+                for h in ("trang", "page", "chap", "chuong", "comic", "manga", "truyen", "cdn", "storage", "/0", "/1")
+            ):
+                normalized = self._normalize_url(src, chapter_url)
+                if normalized not in imgs:
+                    imgs.append(normalized)
+
+        if imgs:
+            return imgs
+
+        # Lớp 3: Trích xuất mảng URL ảnh nhúng trong thẻ <script>
+        url_pattern = re.compile(
+            r"""["']((?:https?:)?//[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s<>\\]*)?)["']""",
+            re.IGNORECASE,
+        )
+        for script in soup.find_all("script"):
+            script_text = script.string or script.get_text() or ""
+            if script_text:
+                cleaned_script = script_text.replace("\\/", "/")
+                for match in url_pattern.finditer(cleaned_script):
+                    raw_u = match.group(1)
+                    if _is_valid(raw_u):
+                        normalized = self._normalize_url(raw_u, chapter_url)
+                        if normalized not in imgs:
+                            imgs.append(normalized)
+
+        if not imgs:
+            page_title = soup.title.get_text(strip=True) if soup.title else "No Title"
+            total_imgs = len(soup.find_all("img"))
+            raise RuntimeError(
+                f"Không tìm thấy ảnh nào trong chương (URL={chapter_url}, Title='{page_title}', TotalImgTags={total_imgs})."
+            )
+
+        return imgs
