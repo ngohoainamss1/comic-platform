@@ -160,10 +160,21 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         chapters: list[ChapterInfo] = []
         seen_nums: set[float] = set()
         chapter_links = soup.select(
-            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, .chapter-list a, .list-chapter a, ul.chapters a"
+            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, "
+            "#nt_listchapter .chapter a, #list-chapter a, .list-chapter a, "
+            ".list_chapter a, .chapter-list a, .works-chapter-list a, "
+            ".box-list-chapter a, .row-content-chapter a, .wp-manga-chapter a, "
+            "ul.chapters a, .episode-list a"
         )
         if not chapter_links:
-            chapter_links = soup.select("a[href*='chap']")
+            chapter_links = [
+                a
+                for a in soup.select("a[href]")
+                if any(
+                    k in (a.get("href") or "").lower()
+                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-")
+                )
+            ]
 
         for a in chapter_links:
             href = self._normalize_url(a.get("href", ""), comic_url)
@@ -171,11 +182,14 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
             if not match:
                 match = re.search(r"(\d+(?:\.\d+)?)", text)
+            if not match:
+                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
             if match and href:
                 num = float(match.group(1))
                 if num not in seen_nums:
                     seen_nums.add(num)
-                    chapters.append(ChapterInfo(chapter_number=num, title=text, url=href))
+                    chap_title = text if re.search(r"\d", text) else f"Chapter {num:g}"
+                    chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
 
         chapters.sort(key=lambda c: c.chapter_number)
 
@@ -195,9 +209,11 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         imgs: list[str] = []
 
         img_nodes = soup.select(
-            ".reading-detail .page-chapter img, .reading-content img, .chapter-content img, .page-chapter img, #reader img"
+            ".reading-detail .page-chapter img, .reading-detail img, "
+            ".reading-content img, .chapter-content img, .page-chapter img, "
+            ".box-reading img, .content-chapter img, #chapter_content img, #reader img"
         )
-        skip_keywords = ("logo", "loading", "icon", "banner", "ads", "donate", "credit")
+        skip_keywords = ("logo", "loading", "icon", "banner", "ads", "donate", "credit", "avatar")
 
         for img in img_nodes:
             src = (
@@ -216,4 +232,3 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                     imgs.append(normalized)
 
         return imgs
-        
