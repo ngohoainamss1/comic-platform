@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import shutil
 import tempfile
@@ -36,6 +37,10 @@ CRAWLER_PROXY = os.getenv("CRAWLER_PROXY", "").strip()
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "comic_ingest_work")
 
 
+class ImageNotFoundError(RuntimeError):
+    pass
+
+
 def get_db():
     return libsql_client.create_client_sync(url=TURSO_URL, auth_token=TURSO_TOKEN)
 
@@ -68,7 +73,24 @@ def send_admin_telegram(message: str):
         print(f"[Cảnh báo] Không gửi được thông báo Telegram: {e}")
 
 
-def download_image(url: str, dest_path: str, referer: str = ""):
+def _expand_image_candidates(packed_url: str) -> list[str]:
+    base_list = [u.strip() for u in packed_url.split("|") if u.strip()]
+    expanded: list[str] = []
+    for u in base_list:
+        if u not in expanded:
+            expanded.append(u)
+        m = re.match(r"^(https?://(?:img|cdn|sv)(\d+)\.[^/]+)(/.+)$", u, re.IGNORECASE)
+        if m:
+            host_tpl = re.sub(r"^(https?://(?:img|cdn|sv))\d+", r"\g<1>{}", m.group(1), flags=re.IGNORECASE)
+            path_part = m.group(3)
+            for idx in (1, 2, 3, 4):
+                alt = f"{host_tpl.format(idx)}{path_part}"
+                if alt not in expanded:
+                    expanded.append(alt)
+    return expanded
+
+
+def _download_single_url(url: str, dest_path: str, referer: str = ""):
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     root_referer = ""
     if referer:
@@ -84,7 +106,7 @@ def download_image(url: str, dest_path: str, referer: str = ""):
     profiles = ["chrome", "edge", "safari"]
     last_err = None
 
-    for attempt in range(1, 5):
+    for attempt in range(1, 4):
         current_ref = referer_candidates[(attempt - 1) % len(referer_candidates)]
         headers = {
             "User-Agent": (
@@ -103,7 +125,7 @@ def download_image(url: str, dest_path: str, referer: str = ""):
             headers["Cookie"] = CRAWLER_COOKIE
 
         try:
-            time.sleep(0.25 * attempt)
+            time.sleep(0.2 * attempt)
             if curl_requests is not None:
                 curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not CRAWLER_PROXY) else {}
                 proxies = {"http": CRAWLER_PROXY, "https": CRAWLER_PROXY} if CRAWLER_PROXY else None
@@ -117,6 +139,8 @@ def download_image(url: str, dest_path: str, referer: str = ""):
                     proxies=proxies,
                     curl_options=curl_opts,
                 )
+                if res.status_code in (404, 410):
+                    raise ImageNotFoundError(f"HTTP {res.status_code} ({url})")
                 res.raise_for_status()
                 if len(res.content) < 512:
                     raise RuntimeError(f"Dữ liệu ảnh quá nhỏ ({len(res.content)} bytes)")
@@ -131,15 +155,43 @@ def download_image(url: str, dest_path: str, referer: str = ""):
                 proxy=CRAWLER_PROXY or None,
             ) as client:
                 res = client.get(url)
+                if res.status_code in (404, 410):
+                    raise ImageNotFoundError(f"HTTP {res.status_code} ({url})")
                 res.raise_for_status()
+                if len(res.content) < 512:
+                    raise RuntimeError(f"Dữ liệu ảnh quá nhỏ ({len(res.content)} bytes)")
                 with open(dest_path, "wb") as f:
                     f.write(res.content)
                 return
+        except ImageNotFoundError:
+            raise
         except Exception as e:
             last_err = e
-            time.sleep(1.0 * attempt)
+            time.sleep(0.6 * attempt)
 
-    raise RuntimeError(f"Tải ảnh thất bại sau 4 lần thử ({url}): {last_err}")
+    raise RuntimeError(f"Tải ảnh thất bại ({url}): {last_err}")
+
+
+def download_image(packed_url: str, dest_path: str, referer: str = ""):
+    candidates = _expand_image_candidates(packed_url)
+    last_err = None
+    all_not_found = True
+
+    for cand_url in candidates:
+        try:
+            _download_single_url(cand_url, dest_path, referer=referer)
+            return
+        except ImageNotFoundError as nf_err:
+            last_err = nf_err
+            continue
+        except Exception as err:
+            all_not_found = False
+            last_err = err
+            continue
+
+    if all_not_found:
+        raise ImageNotFoundError(f"Ảnh không tồn tại trên tất cả CDN ({candidates[0]}): {last_err}")
+    raise RuntimeError(f"Tải ảnh thất bại ({candidates[0]}): {last_err}")
 
 
 def normalize_vn_slug(title: str) -> str:
@@ -397,9 +449,15 @@ def run_sync(single_comic_url: str = ""):
                 chapter_id = int(chap_row[0])
 
                 page_idx = 0
+                skipped_404 = 0
                 for raw_idx, img_url in enumerate(img_urls):
                     raw_path = os.path.join(job_work_dir, "raw", f"raw_{raw_idx:03d}.img")
-                    download_image(img_url, raw_path, referer=chap_url)
+                    try:
+                        download_image(img_url, raw_path, referer=chap_url)
+                    except ImageNotFoundError as nf_err:
+                        skipped_404 += 1
+                        print(f"     [Bỏ qua ảnh 404 #{raw_idx + 1}] {nf_err}")
+                        continue
 
                     sliced_paths = slice_webtoon_image(
                         raw_path, os.path.join(job_work_dir, "sliced"), prefix=f"p{raw_idx:03d}"
@@ -435,18 +493,25 @@ def run_sync(single_comic_url: str = ""):
                         )
                         page_idx += 1
 
-                db_exec(
+                if page_idx == 0:
+                    raise RuntimeError(
+                        f"Toàn bộ {len(img_urls)} ảnh của chương đều trả về 404 Not Found."
+                    )
+
+        db_exec(
                     db_state,
                     "UPDATE comics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     [comic_id],
                 )
                 db_exec(db_state, "UPDATE sync_jobs SET status = 'published' WHERE id = ?", [job_id])
                 new_chapters_log.append(f"{comic_title} - Chap {chap_num:g} ({page_idx} trang)")
-                print(f"     [OK] Xong Chapter {chap_num:g} ({page_idx} trang AVIF)")
+                skip_note = f" (bỏ qua {skipped_404} ảnh banner/404)" if skipped_404 else ""
+                print(f"     [OK] Xong Chapter {chap_num:g} ({page_idx} trang AVIF){skip_note}")
 
             except Exception as err:
                 if chapter_id is not None:
                     db_exec(db_state, "DELETE FROM chapter_pages WHERE chapter_id = ?", [chapter_id])
+                    db_exec(db_state, "DELETE FROM chapters WHERE id = ?", [chapter_id])
                 db_exec(
                     db_state,
                     """
@@ -482,5 +547,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Auto-Sync Crawler & AVIF Publisher")
     parser.add_argument("--comic-url", type=str, default="", help="URL bộ truyện cần cào ngay")
     args = parser.parse_args()
-    run_sync(single_comic_url=args.comic_url.strip())
-            
+    run_sync(single_comic_url=args.comic_url.strip
