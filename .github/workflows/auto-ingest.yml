@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_BACKUP_REPO: ${{ secrets.GH_BACKUP_REPO }}
           CRAWLER_COOKIE: ${{ secrets.CRAWLER_COOKIE }}
-          CRAWLER_PROXY: ${{ secrets.CRAWLER_PROXY
+          CRAWLER_PROXY: ${{ secrets.CRAWLER_PROXY }}
         run: |
           python -m scripts.crawler.sync_manager --comic-url "${{ github.event.inputs.comic_url }}"
           
