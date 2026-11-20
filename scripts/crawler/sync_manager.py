@@ -5,6 +5,7 @@ import time
 import shutil
 import tempfile
 import argparse
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 import httpx
@@ -21,7 +22,7 @@ except ImportError:
     CurlHttpVersion = None
     CurlOpt = None
 
-from scripts.pipeline.slicer import slice_webtoon_image
+from scripts.pipeline.slicer import slice_and_compress_to_avif
 from scripts.pipeline.compressor import compress_to_avif
 from scripts.pipeline.uploader import (
     upload_to_telegram,
@@ -43,24 +44,44 @@ GH_BACKUP_REPO = os.getenv("GH_BACKUP_REPO", "")
 CRAWLER_COOKIE = os.getenv("CRAWLER_COOKIE", "").strip()
 CRAWLER_PROXY = os.getenv("CRAWLER_PROXY", "").strip()
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "comic_ingest_work")
-WORKER_THREADS = int(os.getenv("CRAWLER_WORKERS", "5"))
+
+CHAPTER_WORKERS = int(os.getenv("CRAWLER_CHAPTER_WORKERS", "4"))
+IMAGE_WORKERS = int(os.getenv("CRAWLER_IMAGE_WORKERS", "4"))
+BATCH_LIMIT = int(os.getenv("CRAWLER_BATCH_LIMIT", "100"))
+AVIF_MAX_WIDTH = int(os.getenv("AVIF_MAX_WIDTH", "1440"))
+AVIF_QUALITY = int(os.getenv("AVIF_QUALITY", "80"))
+AVIF_EFFORT = int(os.getenv("AVIF_EFFORT", "2"))
+
+_DB_LOCK = threading.Lock()
+_TG_LOCK = threading.Lock()
+_STATE_LOCK = threading.Lock()
+_TLS = threading.local()
 
 
 class ImageNotFoundError(RuntimeError):
     pass
 
 
-def _make_curl_session():
+def _get_curl_session():
     if curl_requests is None:
         return None
-    try:
-        opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not CRAWLER_PROXY) else {}
-        return curl_requests.Session(curl_options=opts)
-    except TypeError:
-        return curl_requests.Session()
+    sess = getattr(_TLS, "curl_session", None)
+    if sess is None:
+        try:
+            opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not CRAWLER_PROXY) else {}
+            sess = curl_requests.Session(curl_options=opts)
+        except TypeError:
+            sess = curl_requests.Session()
+        _TLS.curl_session = sess
+    return sess
 
 
-_CURL_SESSION = _make_curl_session()
+_IMG_HTTPX = httpx.Client(
+    timeout=30.0,
+    follow_redirects=True,
+    proxy=CRAWLER_PROXY or None,
+    limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+)
 
 
 def get_db():
@@ -69,37 +90,39 @@ def get_db():
 
 def db_exec(db_state: dict, sql: str, args: list | None = None):
     params = args or []
-    last_err = None
-    for attempt in range(1, 4):
-        try:
-            return db_state["client"].execute(sql, params)
-        except Exception as err:
-            last_err = err
+    with _DB_LOCK:
+        last_err = None
+        for attempt in range(1, 4):
             try:
-                db_state["client"].close()
-            except Exception:
-                pass
-            time.sleep(0.4 * attempt)
-            db_state["client"] = get_db()
-    raise RuntimeError(f"Turso SQL lỗi sau 3 lần thử: {last_err}")
+                return db_state["client"].execute(sql, params)
+            except Exception as err:
+                last_err = err
+                try:
+                    db_state["client"].close()
+                except Exception:
+                    pass
+                time.sleep(0.3 * attempt)
+                db_state["client"] = get_db()
+        raise RuntimeError(f"Turso SQL lỗi sau 3 lần thử: {last_err}")
 
 
 def db_batch(db_state: dict, stmts: list[tuple[str, list]]):
     if not stmts:
         return
-    last_err = None
-    for attempt in range(1, 4):
-        try:
-            return db_state["client"].batch(stmts)
-        except Exception as err:
-            last_err = err
+    with _DB_LOCK:
+        last_err = None
+        for attempt in range(1, 4):
             try:
-                db_state["client"].close()
-            except Exception:
-                pass
-            time.sleep(0.4 * attempt)
-            db_state["client"] = get_db()
-    raise RuntimeError(f"Turso Batch SQL lỗi sau 3 lần thử: {last_err}")
+                return db_state["client"].batch(stmts)
+            except Exception as err:
+                last_err = err
+                try:
+                    db_state["client"].close()
+                except Exception:
+                    pass
+                time.sleep(0.3 * attempt)
+                db_state["client"] = get_db()
+        raise RuntimeError(f"Turso Batch SQL lỗi sau 3 lần thử: {last_err}")
 
 
 def send_admin_telegram(message: str):
@@ -135,10 +158,11 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
     refs = list(dict.fromkeys([root_ref, referer, ""]))
     profiles = ["chrome", "edge", "safari"]
     last_err = None
+    curl_sess = _get_curl_session()
 
     for attempt in range(1, 4):
         if attempt > 1:
-            time.sleep(0.4 * attempt)
+            time.sleep(0.3 * attempt)
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -154,9 +178,9 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
             headers["Cookie"] = CRAWLER_COOKIE
 
         try:
-            if _CURL_SESSION is not None:
+            if curl_sess is not None:
                 proxies = {"http": CRAWLER_PROXY, "https": CRAWLER_PROXY} if CRAWLER_PROXY else None
-                res = _CURL_SESSION.get(
+                res = curl_sess.get(
                     url,
                     headers=headers,
                     impersonate=profiles[(attempt - 1) % len(profiles)],
@@ -166,8 +190,7 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
                     proxies=proxies,
                 )
             else:
-                with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers, proxy=CRAWLER_PROXY or None) as client:
-                    res = client.get(url)
+                res = _IMG_HTTPX.get(url, headers=headers)
 
             if res.status_code in (404, 410):
                 raise ImageNotFoundError(f"HTTP {res.status_code} ({url})")
@@ -214,7 +237,7 @@ def _upload_cover(detail, slug: str, page_url: str) -> tuple[str, str]:
         raw_cover = os.path.join(TEMP_DIR, f"{slug}_cover_raw.img")
         avif_cover = os.path.join(TEMP_DIR, f"{slug}_cover.avif")
         download_image(detail.cover_url, raw_cover, referer=page_url)
-        compress_to_avif(raw_cover, avif_cover, max_width=600, quality=72, effort=2)
+        compress_to_avif(raw_cover, avif_cover, max_width=720, quality=80, effort=AVIF_EFFORT)
         tg_id = upload_to_telegram(avif_cover, TG_BOT_TOKEN, TG_CHANNEL_ID, caption=f"Cover: {detail.title}")
         gh_path = upload_to_github_backup(avif_cover, f"covers/{slug}.avif", GH_BACKUP_REPO, GH_TOKEN)
         return tg_id, gh_path
@@ -260,40 +283,51 @@ def _prepare_source_image(
     except ImageNotFoundError as nf_err:
         return raw_idx, None, str(nf_err)
 
-    sliced_dir = os.path.join(work_dir, "sliced", f"src_{raw_idx:03d}")
     avif_dir = os.path.join(work_dir, "avif", f"src_{raw_idx:03d}")
-    sliced_paths = slice_webtoon_image(raw_path, sliced_dir, prefix=f"p{raw_idx:03d}")
-
-    items: list[dict] = []
-    for sub_idx, s_path in enumerate(sliced_paths):
-        avif_path = os.path.join(avif_dir, f"part_{sub_idx:03d}.avif")
-        meta = compress_to_avif(s_path, avif_path, max_width=1080, quality=68, effort=2)
-        items.append(meta)
+    items = slice_and_compress_to_avif(
+        raw_path,
+        avif_dir,
+        prefix=f"p{raw_idx:03d}",
+        max_width=AVIF_MAX_WIDTH,
+        quality=AVIF_QUALITY,
+        effort=AVIF_EFFORT,
+    )
     return raw_idx, items, None
 
 
-def _process_job(db_state: dict, job, get_adapter, single_comic_url: str, new_chapters_log: list[str]):
+def _process_job(
+    db_state: dict,
+    job,
+    single_comic_url: str,
+    comic_cache: dict[str, tuple[int, str]],
+    new_chapters_log: list[str],
+    pending_gh_files: list[tuple[str, str]],
+):
     t0 = time.time()
     job_id, comic_slug, chap_num, chap_url = int(job[0]), str(job[2]), float(job[3]), str(job[4])
     p = urlparse(chap_url)
     chap_origin = f"{p.scheme}://{p.netloc}" if (p.scheme and p.netloc) else str(job[5])
 
-    print(f"  -> Đang tải & nén AVIF ({WORKER_THREADS} luồng): {comic_slug} - Chapter {chap_num:g} ...")
-    db_exec(db_state, "UPDATE sync_jobs SET status = 'processing' WHERE id = ?", [job_id])
     work_dir = os.path.join(TEMP_DIR, f"job_{job_id}")
     chapter_id = None
+    keep_work_dir = False
 
     try:
-        img_urls = get_adapter(chap_origin, chap_origin).fetch_chapter_images(chap_url, referer_url=single_comic_url or chap_origin)
+        adapter = StandardHtmlRssAdapter(chap_origin, chap_origin, delay_seconds=0.15)
+        img_urls = adapter.fetch_chapter_images(chap_url, referer_url=single_comic_url or chap_origin)
         if not img_urls:
             raise RuntimeError("Không tìm thấy ảnh nào trong chương.")
 
-        comic_row = db_exec(db_state, "SELECT id, title FROM comics WHERE slug = ? LIMIT 1", [comic_slug]).rows[0]
-        comic_id, comic_title = int(comic_row[0]), str(comic_row[1])
-        db_exec(db_state, "INSERT OR IGNORE INTO chapters (comic_id, chapter_number, title) VALUES (?, ?, ?)", [comic_id, chap_num, f"Chapter {chap_num:g}"])
-        chapter_id = int(db_exec(db_state, "SELECT id FROM chapters WHERE comic_id = ? AND chapter_number = ? LIMIT 1", [comic_id, chap_num]).rows[0][0])
+        with _STATE_LOCK:
+            cached = comic_cache.get(comic_slug)
+        if cached is None:
+            comic_row = db_exec(db_state, "SELECT id, title FROM comics WHERE slug = ? LIMIT 1", [comic_slug]).rows[0]
+            cached = (int(comic_row[0]), str(comic_row[1]))
+            with _STATE_LOCK:
+                comic_cache[comic_slug] = cached
+        comic_id, comic_title = cached
 
-        with ThreadPoolExecutor(max_workers=WORKER_THREADS) as pool:
+        with ThreadPoolExecutor(max_workers=IMAGE_WORKERS) as pool:
             futures = [
                 pool.submit(_prepare_source_image, idx, url, chap_url, work_dir)
                 for idx, url in enumerate(img_urls)
@@ -317,22 +351,27 @@ def _process_job(db_state: dict, job, get_adapter, single_comic_url: str, new_ch
             (page["path"], f"{comic_title} - Ch.{chap_num:g} - P.{idx + 1}")
             for idx, page in enumerate(prepared_pages)
         ]
-        tg_file_ids = upload_batch_to_telegram(tg_items, TG_BOT_TOKEN, TG_CHANNEL_ID, chunk_size=10)
+        with _TG_LOCK:
+            tg_file_ids = upload_batch_to_telegram(tg_items, TG_BOT_TOKEN, TG_CHANNEL_ID, chunk_size=10)
+            time.sleep(0.6)
 
-        gh_items = [
-            (page["path"], f"chapters/{comic_slug}/ch-{chap_num:g}/{idx:03d}.avif")
-            for idx, page in enumerate(prepared_pages)
-        ]
-        gh_uploaded = upload_batch_to_github_backup(
-            gh_items,
-            GH_BACKUP_REPO,
-            GH_TOKEN,
-            commit_message=f"backup: {comic_slug} ch-{chap_num:g} ({len(prepared_pages)} pages)",
+        upsert_res = db_exec(
+            db_state,
+            "INSERT INTO chapters (comic_id, chapter_number, title) VALUES (?, ?, ?) "
+            "ON CONFLICT(comic_id, chapter_number) DO UPDATE SET title = excluded.title RETURNING id",
+            [comic_id, chap_num, f"Chapter {chap_num:g}"],
         )
+        chapter_id = int(upsert_res.rows[0][0])
 
-        batch_stmts: list[tuple[str, list]] = []
+        has_gh = bool(GH_BACKUP_REPO and GH_TOKEN)
+        batch_stmts: list[tuple[str, list]] = [
+            ("DELETE FROM chapter_pages WHERE chapter_id = ?", [chapter_id]),
+        ]
+        gh_chunk: list[tuple[str, str]] = []
         for idx, page in enumerate(prepared_pages):
-            clean_repo_path = f"chapters/{comic_slug}/ch-{chap_num:g}/{idx:03d}.avif"
+            clean_repo_path = f"chapters/{comic_slug}/ch-{chap_num:g}/{idx:03d}.avif" if has_gh else ""
+            if has_gh:
+                gh_chunk.append((page["path"], clean_repo_path))
             batch_stmts.append(
                 (
                     "INSERT INTO chapter_pages (chapter_id, page_index, tg_file_id, gh_fallback_path, width, height, format) VALUES (?, ?, ?, ?, ?, ?, 'avif')",
@@ -340,7 +379,7 @@ def _process_job(db_state: dict, job, get_adapter, single_comic_url: str, new_ch
                         chapter_id,
                         idx,
                         tg_file_ids[idx],
-                        gh_uploaded.get(clean_repo_path, ""),
+                        clean_repo_path,
                         page["width"],
                         page["height"],
                     ],
@@ -350,10 +389,15 @@ def _process_job(db_state: dict, job, get_adapter, single_comic_url: str, new_ch
         batch_stmts.append(("UPDATE sync_jobs SET status = 'published' WHERE id = ?", [job_id]))
         db_batch(db_state, batch_stmts)
 
+        with _STATE_LOCK:
+            new_chapters_log.append(f"{comic_title} - Chap {chap_num:g} ({len(prepared_pages)} trang)")
+            if gh_chunk:
+                pending_gh_files.extend(gh_chunk)
+                keep_work_dir = True
+
         elapsed = time.time() - t0
-        new_chapters_log.append(f"{comic_title} - Chap {chap_num:g} ({len(prepared_pages)} trang)")
         skip_note = f" (bỏ qua {skipped_404} ảnh 404)" if skipped_404 else ""
-        print(f"     [OK] Xong Chapter {chap_num:g} ({len(prepared_pages)} trang AVIF trong {elapsed:.1f}s){skip_note}")
+        print(f"  [OK] {comic_slug} Ch.{chap_num:g} ({len(prepared_pages)} trang AVIF {AVIF_MAX_WIDTH}px Q{AVIF_QUALITY} trong {elapsed:.1f}s){skip_note}")
     except Exception as err:
         if chapter_id is not None:
             db_batch(
@@ -364,20 +408,23 @@ def _process_job(db_state: dict, job, get_adapter, single_comic_url: str, new_ch
                 ],
             )
         db_exec(db_state, "UPDATE sync_jobs SET status = 'pending', retry_count = retry_count + 1, error_log = ? WHERE id = ?", [str(err)[:500], job_id])
-        print(f"     [Lỗi xử lý job {job_id}] {err}")
+        print(f"  [Lỗi job {job_id} - Ch.{chap_num:g}] {err}")
     finally:
-        if os.path.exists(work_dir):
+        if not keep_work_dir and os.path.exists(work_dir):
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def run_sync(single_comic_url: str = ""):
+    run_t0 = time.time()
     db_state = {"client": get_db()}
     new_comics_log, new_chapters_log, target_slugs = [], [], []
+    comic_cache: dict[str, tuple[int, str]] = {}
+    pending_gh_files: list[tuple[str, str]] = []
     adapters: dict[str, StandardHtmlRssAdapter] = {}
 
     def get_adapter(origin: str, feed_url: str) -> StandardHtmlRssAdapter:
         if origin not in adapters:
-            adapters[origin] = StandardHtmlRssAdapter(origin, feed_url)
+            adapters[origin] = StandardHtmlRssAdapter(origin, feed_url, delay_seconds=0.15)
         return adapters[origin]
 
     try:
@@ -409,6 +456,7 @@ def run_sync(single_comic_url: str = ""):
                         continue
 
                     comic_id, slug, is_new = ensure_comic_exists(db_state, detail, comic_url)
+                    comic_cache[slug] = (comic_id, detail.title)
                     if slug not in target_slugs:
                         target_slugs.append(slug)
                     if is_new:
@@ -438,17 +486,50 @@ def run_sync(single_comic_url: str = ""):
                 print("[Dừng] Không lấy được danh sách chương từ URL đã nhập.")
                 return
             db_exec(db_state, "UPDATE sync_jobs SET retry_count = 0 WHERE status = 'pending' AND comic_slug = ?", [target_slugs[0]])
-            jobs_res = db_exec(db_state, "SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url FROM sync_jobs j JOIN sync_sources s ON j.source_id = s.id WHERE j.status = 'pending' AND j.comic_slug = ? ORDER BY j.chapter_number ASC, j.created_at ASC LIMIT 50", [target_slugs[0]])
+            jobs_res = db_exec(
+                db_state,
+                "SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url "
+                "FROM sync_jobs j JOIN sync_sources s ON j.source_id = s.id "
+                "WHERE j.status = 'pending' AND j.comic_slug = ? "
+                "ORDER BY j.chapter_number ASC, j.created_at ASC LIMIT ?",
+                [target_slugs[0], BATCH_LIMIT],
+            )
         else:
-            jobs_res = db_exec(db_state, "SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url FROM sync_jobs j JOIN sync_sources s ON j.source_id = s.id WHERE j.status = 'pending' AND j.retry_count < 3 AND s.is_active = 1 ORDER BY j.chapter_number ASC, j.created_at ASC LIMIT 50")
+            jobs_res = db_exec(
+                db_state,
+                "SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url "
+                "FROM sync_jobs j JOIN sync_sources s ON j.source_id = s.id "
+                "WHERE j.status = 'pending' AND j.retry_count < 3 AND s.is_active = 1 "
+                "ORDER BY j.chapter_number ASC, j.created_at ASC LIMIT ?",
+                [BATCH_LIMIT],
+            )
 
         if not jobs_res.rows:
             print("[Hoàn tất] Không còn chương nào đang chờ xử lý.")
             return
 
-        print(f"[Bắt đầu xử lý] {len(jobs_res.rows)} chương trong lượt này...")
-        for job in jobs_res.rows:
-            _process_job(db_state, job, get_adapter, single_comic_url, new_chapters_log)
+        print(f"[Tăng tốc {CHAPTER_WORKERS}x{IMAGE_WORKERS}] Bắt đầu xử lý {len(jobs_res.rows)} chương...")
+        with ThreadPoolExecutor(max_workers=CHAPTER_WORKERS) as chapter_pool:
+            futs = [
+                chapter_pool.submit(_process_job, db_state, job, single_comic_url, comic_cache, new_chapters_log, pending_gh_files)
+                for job in jobs_res.rows
+            ]
+            for fut in futs:
+                fut.result()
+
+        if pending_gh_files:
+            gh_t0 = time.time()
+            print(f"[GitHub Backup] Đang đẩy {len(pending_gh_files)} trang vào 1 commit duy nhất...")
+            upload_batch_to_github_backup(
+                pending_gh_files,
+                GH_BACKUP_REPO,
+                GH_TOKEN,
+                commit_message=f"backup: batch {len(new_chapters_log)} chapters ({len(pending_gh_files)} pages)",
+            )
+            print(f"[GitHub Backup] Hoàn tất trong {time.time() - gh_t0:.1f}s.")
+
+        total_elapsed = time.time() - run_t0
+        print(f"[Tổng kết] Hoàn thành {len(new_chapters_log)} chương trong {total_elapsed:.1f}s.")
 
         if new_comics_log or new_chapters_log:
             lines = ["<b>[VinaReader Auto-Sync] Cập nhật mới thành công:</b>"]
