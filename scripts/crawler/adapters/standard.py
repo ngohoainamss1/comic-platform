@@ -36,7 +36,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
     def _normalize_url(self, raw_url: str, page_url: str) -> str:
         if not raw_url:
             return ""
-        raw_url = raw_url.strip()
+        raw_url = raw_url.strip().strip("\"'")
         if raw_url.startswith("//"):
             return f"https:{raw_url}"
         return urljoin(page_url, raw_url)
@@ -208,27 +208,62 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         soup = BeautifulSoup(html, "html.parser")
         imgs: list[str] = []
 
-        img_nodes = soup.select(
-            ".reading-detail .page-chapter img, .reading-detail img, "
-            ".reading-content img, .chapter-content img, .page-chapter img, "
-            ".box-reading img, .content-chapter img, #chapter_content img, #reader img"
+        skip_keywords = (
+            "logo", "loading", "loader", "spinner", "icon", "banner",
+            "ads", "advert", "donate", "credit", "avatar", "facebook",
+            "zalo", "telegram", "discord", "qr", "placeholder", "1x1", "blank"
         )
-        skip_keywords = ("logo", "loading", "icon", "banner", "ads", "donate", "credit", "avatar")
+        img_attrs = (
+            "data-original",
+            "data-src",
+            "data-cdn",
+            "data-sv1",
+            "data-sv2",
+            "data-lazy-src",
+            "data-lazy",
+            "data-url",
+            "data-image",
+            "data-img",
+            "data-echo",
+            "data-cfsrc",
+            "data-full-src",
+            "src",
+        )
 
-        for img in img_nodes:
-            src = (
-                img.get("data-original")
-                or img.get("data-src")
-                or img.get("data-cdn")
-                or img.get("data-sv1")
-                or img.get("data-sv2")
-                or img.get("data-lazy-src")
-                or img.get("src")
-                or ""
-            ).strip()
-            if src and not src.startswith("data:") and not any(k in src.lower() for k in skip_keywords):
-                normalized = self._normalize_url(src, chapter_url)
-                if normalized not in imgs:
-                    imgs.append(normalized)
+        def _extract_src(img_tag) -> str:
+            for attr in img_attrs:
+                val = (img_tag.get(attr) or "").strip()
+                if val and not val.startswith("data:"):
+                    return val
+            for srcset_attr in ("data-srcset", "srcset"):
+                srcset = (img_tag.get(srcset_attr) or "").strip()
+                if srcset:
+                    first_entry = srcset.split(",")[0].strip().split(" ")[0].strip()
+                    if first_entry and not first_entry.startswith("data:"):
+                        return first_entry
+            return ""
 
-        return imgs
+        def _is_valid(url_str: str) -> bool:
+            low = url_str.lower()
+            if not low or low.startswith("data:") or low.startswith("blob:"):
+                return False
+            if any(k in low for k in skip_keywords):
+                return False
+            if low.endswith(".svg") or low.endswith(".gif"):
+                return False
+            return True
+
+        # Lớp 1: Các selector vùng đọc truyện phổ biến
+        reader_selectors = (
+            ".reading-detail .page-chapter img, .reading-detail img, "
+            ".reading-content img, .reading-box img, .read-content img, .reading img, "
+            ".chapter-content img, .chapter_content img, .chapter-c img, .chapter-detail img, "
+            ".page-chapter img, .page-break img, .box-reading img, .content-chapter img, "
+            ".container-chapter img, .list-img img, .chapter-imgs img, .img-chapter img, "
+            "#chapter_content img, #chapter-content img, #vungdoc img, #vung-doc img, "
+            ".vung-doc img, .vung_doc img, #reader img, .viewer img, .comic-viewer img"
+        )
+        for img in soup.select(reader_selectors):
+            src = _extract_src(img)
+            if _is_valid(src):
+                
