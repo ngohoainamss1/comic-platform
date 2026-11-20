@@ -1,6 +1,8 @@
+# scripts/crawler/adapters/standard.py
 import os
 import re
 import time
+import threading
 from urllib.parse import urljoin, urlparse
 import httpx
 import feedparser
@@ -15,7 +17,7 @@ except ImportError:
 
 
 class StandardHtmlRssAdapter(BaseSourceAdapter):
-    def __init__(self, base_url: str, feed_url: str, delay_seconds: float = 0.8):
+    def __init__(self, base_url: str, feed_url: str, delay_seconds: float = 0.2):
         super().__init__(base_url, feed_url)
         self.delay_seconds = delay_seconds
         self.cookie_header = os.getenv("CRAWLER_COOKIE", "").strip()
@@ -32,19 +34,25 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         if self.cookie_header:
             self.headers["Cookie"] = self.cookie_header
 
-        self._curl_session = None
-        if curl_requests is not None:
-            try:
-                curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not self.proxy_url) else {}
-                self._curl_session = curl_requests.Session(curl_options=curl_opts)
-            except TypeError:
-                self._curl_session = curl_requests.Session()
-
+        self._tls = threading.local()
         self._httpx_client = httpx.Client(
             timeout=25.0,
             follow_redirects=True,
             proxy=self.proxy_url or None,
         )
+
+    def _get_curl_session(self):
+        if curl_requests is None:
+            return None
+        sess = getattr(self._tls, "curl_session", None)
+        if sess is None:
+            try:
+                curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not self.proxy_url) else {}
+                sess = curl_requests.Session(curl_options=curl_opts)
+            except TypeError:
+                sess = curl_requests.Session()
+            self._tls.curl_session = sess
+        return sess
 
     def _origin_of(self, url: str) -> str:
         parsed = urlparse(url)
@@ -69,9 +77,11 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
 
         profiles = ["chrome", "edge", "safari"]
         last_err = None
+        curl_sess = self._get_curl_session()
 
         for attempt in range(1, 4):
-            time.sleep(self.delay_seconds * attempt)
+            if attempt > 1:
+                time.sleep(self.delay_seconds * attempt)
             req_headers = dict(self.headers)
             if extra_headers:
                 req_headers.update(extra_headers)
@@ -80,9 +90,9 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 req_headers["Referer"] = current_ref
 
             try:
-                if self._curl_session is not None:
+                if curl_sess is not None:
                     proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
-                    res = self._curl_session.get(
+                    res = curl_sess.get(
                         url,
                         headers=req_headers,
                         impersonate=profiles[(attempt - 1) % len(profiles)],
@@ -131,7 +141,13 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             title = (title_el.get_text(strip=True) if title_el else link_el.get("title", "")).strip()
             cover = ""
             if img_el:
-                raw_cov = img_el.get("data-original") or img_el.get("data-src") or img_el.get("src") or ""
+                raw_cov = (
+                    img_el.get("data-full-src")
+                    or img_el.get("data-original")
+                    or img_el.get("data-src")
+                    or img_el.get("src")
+                    or ""
+                )
                 if raw_cov and not raw_cov.startswith("data:"):
                     cover = self._normalize_url(raw_cov, self.feed_url)
 
@@ -249,7 +265,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         cover_url = ""
         if cover_el:
             raw_cover = (
-                cover_el.get("data-original")
+                cover_el.get("data-full-src")
+                or cover_el.get("data-original")
                 or cover_el.get("data-src")
                 or cover_el.get("data-lazy-src")
                 or cover_el.get("src")
@@ -314,13 +331,19 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             "zalo", "telegram", "discord", "qr", "placeholder", "1x1", "blank"
         )
         img_attrs = (
-            "data-original", "data-src", "data-cdn", "data-sv1", "data-sv2",
+            "data-full-src", "data-original", "data-src", "data-cdn", "data-sv1", "data-sv2",
             "data-lazy-src", "data-lazy", "data-url", "data-image",
-            "data-img", "data-echo", "data-cfsrc", "data-full-src", "src",
+            "data-img", "data-echo", "data-cfsrc", "src",
         )
 
         def _extract_candidates(img_tag) -> list[str]:
             found: list[str] = []
+            for srcset_attr in ("data-srcset", "srcset"):
+                srcset = (img_tag.get(srcset_attr) or "").strip()
+                if srcset:
+                    best_entry = srcset.split(",")[-1].strip().split(" ")[0].strip()
+                    if best_entry and not best_entry.startswith("data:") and best_entry not in found:
+                        found.append(best_entry)
             for attr in img_attrs:
                 val = (img_tag.get(attr) or "").strip()
                 if val and not val.startswith("data:") and val not in found:
@@ -331,12 +354,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                     cand = m.group(1).strip()
                     if cand and not cand.startswith("data:") and cand not in found:
                         found.append(cand)
-            for srcset_attr in ("data-srcset", "srcset"):
-                srcset = (img_tag.get(srcset_attr) or "").strip()
-                if srcset:
-                    first_entry = srcset.split(",")[0].strip().split(" ")[0].strip()
-                    if first_entry and not first_entry.startswith("data:") and first_entry not in found:
-                        found.append(first_entry)
             return found
 
         def _is_valid(url_str: str) -> bool:
