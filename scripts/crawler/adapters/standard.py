@@ -32,7 +32,14 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         if self.cookie_header:
             self.headers["Cookie"] = self.cookie_header
 
-        self._curl_session = curl_requests.Session() if curl_requests is not None else None
+        self._curl_session = None
+        if curl_requests is not None:
+            try:
+                curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not self.proxy_url) else {}
+                self._curl_session = curl_requests.Session(curl_options=curl_opts)
+            except TypeError:
+                self._curl_session = curl_requests.Session()
+
         self._httpx_client = httpx.Client(
             timeout=25.0,
             follow_redirects=True,
@@ -72,7 +79,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
 
             try:
                 if self._curl_session is not None:
-                    curl_opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not self.proxy_url) else {}
                     proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
                     res = self._curl_session.get(
                         url,
@@ -81,7 +87,6 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                         timeout=25,
                         allow_redirects=True,
                         proxies=proxies,
-                        curl_options=curl_opts,
                     )
                     res.raise_for_status()
                     return res.text
@@ -339,3 +344,4 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             )
 
         return imgs
+        
