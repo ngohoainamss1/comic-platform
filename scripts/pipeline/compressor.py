@@ -1,4 +1,8 @@
+# scripts/pipeline/compressor.py
 import os
+
+os.environ.setdefault("VIPS_CONCURRENCY", "1")
+
 import pyvips
 import numpy as np
 
@@ -19,6 +23,7 @@ def compress_to_avif(
     output_avif_path: str,
     max_width: int = 1080,
     quality: int = 68,
+    effort: int = 2,
 ) -> dict:
     os.makedirs(os.path.dirname(os.path.abspath(output_avif_path)), exist_ok=True)
     img = pyvips.Image.new_from_file(input_path, access="random")
@@ -38,7 +43,7 @@ def compress_to_avif(
         output_avif_path,
         Q=quality,
         compression="av1",
-        effort=6,
+        effort=effort,
         subsample_mode="off",
         strip=True,
     )
@@ -50,3 +55,4 @@ def compress_to_avif(
         "size_bytes": os.path.getsize(output_avif_path),
         "format": "avif",
     }
+    
