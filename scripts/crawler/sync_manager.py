@@ -38,6 +38,23 @@ def get_db():
     return libsql_client.create_client_sync(url=TURSO_URL, auth_token=TURSO_TOKEN)
 
 
+def db_exec(db_state: dict, sql: str, args: list | None = None):
+    params = args or []
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            return db_state["client"].execute(sql, params)
+        except Exception as err:
+            last_err = err
+            try:
+                db_state["client"].close()
+            except Exception:
+                pass
+            time.sleep(0.5 * attempt)
+            db_state["client"] = get_db()
+    raise RuntimeError(f"Turso SQL lỗi sau 3 lần thử: {last_err}")
+
+
 def send_admin_telegram(message: str):
     if not TG_BOT_TOKEN or not TG_ADMIN_ID:
         return
@@ -139,16 +156,17 @@ def _process_and_upload_cover(detail, slug: str, page_url: str) -> tuple[str, st
         return "", ""
 
 
-def ensure_comic_exists(db, detail, page_url: str) -> tuple[int, str, bool]:
+def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str, bool]:
     slug = normalize_vn_slug(detail.title)
-    existing = db.execute("SELECT id, cover_file_id FROM comics WHERE slug = ? LIMIT 1", [slug])
+    existing = db_exec(db_state, "SELECT id, cover_file_id FROM comics WHERE slug = ? LIMIT 1", [slug])
     if existing.rows:
         comic_id = int(existing.rows[0][0])
         current_cover = str(existing.rows[0][1] or "")
         if not current_cover and detail.cover_url:
             cover_file_id, cover_gh_path = _process_and_upload_cover(detail, slug, page_url)
             if cover_file_id or cover_gh_path:
-                db.execute(
+                db_exec(
+                    db_state,
                     "UPDATE comics SET cover_file_id = ?, cover_gh_path = ? WHERE id = ?",
                     [cover_file_id, cover_gh_path, comic_id],
                 )
@@ -156,21 +174,23 @@ def ensure_comic_exists(db, detail, page_url: str) -> tuple[int, str, bool]:
 
     cover_file_id, cover_gh_path = _process_and_upload_cover(detail, slug, page_url)
 
-    db.execute(
+    db_exec(
+        db_state,
         '''
         INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ''',
         [slug, detail.title, detail.alt_titles, detail.description, cover_file_id, cover_gh_path, detail.status],
     )
-    row = db.execute("SELECT id FROM comics WHERE slug = ? LIMIT 1", [slug])
+    row = db_exec(db_state, "SELECT id FROM comics WHERE slug = ? LIMIT 1", [slug])
     comic_id = int(row.rows[0][0])
 
     for raw_genre in detail.genres:
         g_slug = normalize_vn_slug(raw_genre)
-        g_row = db.execute("SELECT id FROM genres WHERE slug = ? LIMIT 1", [g_slug])
+        g_row = db_exec(db_state, "SELECT id FROM genres WHERE slug = ? LIMIT 1", [g_slug])
         if g_row.rows:
-            db.execute(
+            db_exec(
+                db_state,
                 "INSERT OR IGNORE INTO comic_genres (comic_id, genre_id) VALUES (?, ?)",
                 [comic_id, int(g_row.rows[0][0])],
             )
@@ -179,34 +199,39 @@ def ensure_comic_exists(db, detail, page_url: str) -> tuple[int, str, bool]:
 
 
 def run_sync(single_comic_url: str = ""):
-    db = get_db()
+    db_state = {"client": get_db()}
     new_comics_log: list[str] = []
     new_chapters_log: list[str] = []
+    target_slugs: list[str] = []
 
     try:
         if single_comic_url:
             parsed = urlparse(single_comic_url)
             origin = f"{parsed.scheme}://{parsed.netloc}"
-            src_rows = db.execute(
+            src_rows = db_exec(
+                db_state,
                 "SELECT id, name, base_url, feed_url FROM sync_sources WHERE base_url LIKE ? LIMIT 1",
                 [f"%{parsed.netloc}%"],
             ).rows
             if not src_rows:
-                db.execute(
+                db_exec(
+                    db_state,
                     '''
                     INSERT INTO sync_sources (name, base_url, feed_url, adapter_type, is_active)
                     VALUES (?, ?, ?, 'standard', 0)
                     ''',
                     [parsed.netloc, origin, single_comic_url],
                 )
-                src_rows = db.execute(
+                src_rows = db_exec(
+                    db_state,
                     "SELECT id, name, base_url, feed_url FROM sync_sources WHERE base_url LIKE ? LIMIT 1",
                     [f"%{parsed.netloc}%"],
                 ).rows
             sources = src_rows
         else:
-            sources = db.execute(
-                "SELECT id, name, base_url, feed_url FROM sync_sources WHERE is_active = 1"
+            sources = db_exec(
+                db_state,
+                "SELECT id, name, base_url, feed_url FROM sync_sources WHERE is_active = 1",
             ).rows
 
         if not sources:
@@ -231,20 +256,26 @@ def run_sync(single_comic_url: str = ""):
                         print(f"[Cảnh báo] Không tìm thấy danh sách chương tại {comic_url} (Title: {detail.title})")
                         continue
 
-                    comic_id, slug, is_new = ensure_comic_exists(db, detail, comic_url)
+                    comic_id, slug, is_new = ensure_comic_exists(db_state, detail, comic_url)
+                    if slug not in target_slugs:
+                        target_slugs.append(slug)
+
                     if is_new:
                         new_comics_log.append(detail.title)
                         print(f"[Tạo truyện mới] {detail.title} ({len(detail.chapters)} chương)")
 
-                    existing_chaps_res = db.execute(
-                        "SELECT chapter_number FROM chapters WHERE comic_id = ?", [comic_id]
+                    existing_chaps_res = db_exec(
+                        db_state,
+                        "SELECT chapter_number FROM chapters WHERE comic_id = ?",
+                        [comic_id],
                     )
                     existing_nums = {float(r[0]) for r in existing_chaps_res.rows}
 
                     queued = 0
                     for ch in detail.chapters:
                         if ch.chapter_number not in existing_nums:
-                            db.execute(
+                            db_exec(
+                                db_state,
                                 '''
                                 INSERT OR IGNORE INTO sync_jobs
                                 (source_id, comic_slug, chapter_number, source_chapter_url, status)
@@ -257,23 +288,44 @@ def run_sync(single_comic_url: str = ""):
                 except Exception as e:
                     print(f"[Lỗi quét truyện] {comic_url}: {e}")
 
-            db.execute(
-                "UPDATE sync_sources SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?", [src_id]
+            db_exec(
+                db_state,
+                "UPDATE sync_sources SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?",
+                [src_id],
             )
 
-        jobs_res = db.execute(
-            '''
-            SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url
-            FROM sync_jobs j
-            JOIN sync_sources s ON j.source_id = s.id
-            WHERE j.status = 'pending'
-              AND j.retry_count < 3
-              AND (s.is_active = 1 OR ? != '')
-            ORDER BY j.chapter_number ASC, j.created_at ASC
-            LIMIT 20
-            ''',
-            [single_comic_url],
-        )
+        if single_comic_url:
+            if not target_slugs:
+                print("[Dừng] Không lấy được danh sách chương từ URL đã nhập.")
+                return
+            jobs_res = db_exec(
+                db_state,
+                '''
+                SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url
+                FROM sync_jobs j
+                JOIN sync_sources s ON j.source_id = s.id
+                WHERE j.status = 'pending'
+                  AND j.retry_count < 3
+                  AND j.comic_slug = ?
+                ORDER BY j.chapter_number ASC, j.created_at ASC
+                LIMIT 20
+                ''',
+                [target_slugs[0]],
+            )
+        else:
+            jobs_res = db_exec(
+                db_state,
+                '''
+                SELECT j.id, j.source_id, j.comic_slug, j.chapter_number, j.source_chapter_url, s.base_url
+                FROM sync_jobs j
+                JOIN sync_sources s ON j.source_id = s.id
+                WHERE j.status = 'pending'
+                  AND j.retry_count < 3
+                  AND s.is_active = 1
+                ORDER BY j.chapter_number ASC, j.created_at ASC
+                LIMIT 20
+                ''',
+            )
 
         if not jobs_res.rows:
             print("[Hoàn tất] Không còn chương nào đang chờ xử lý.")
@@ -294,7 +346,7 @@ def run_sync(single_comic_url: str = ""):
             )
 
             print(f"  -> Đang tải & nén AVIF: {comic_slug} - Chapter {chap_num:g} ...")
-            db.execute("UPDATE sync_jobs SET status = 'processing' WHERE id = ?", [job_id])
+            db_exec(db_state, "UPDATE sync_jobs SET status = 'processing' WHERE id = ?", [job_id])
             job_work_dir = os.path.join(TEMP_DIR, f"job_{job_id}")
             chapter_id = None
 
@@ -304,16 +356,20 @@ def run_sync(single_comic_url: str = ""):
                 if not img_urls:
                     raise RuntimeError("Không tìm thấy ảnh nào trong chương.")
 
-                comic_row = db.execute(
-                    "SELECT id, title FROM comics WHERE slug = ? LIMIT 1", [comic_slug]
+                comic_row = db_exec(
+                    db_state,
+                    "SELECT id, title FROM comics WHERE slug = ? LIMIT 1",
+                    [comic_slug],
                 ).rows[0]
                 comic_id, comic_title = int(comic_row[0]), str(comic_row[1])
 
-                db.execute(
+                db_exec(
+                    db_state,
                     "INSERT OR IGNORE INTO chapters (comic_id, chapter_number, title) VALUES (?, ?, ?)",
                     [comic_id, chap_num, f"Chapter {chap_num:g}"],
                 )
-                chap_row = db.execute(
+                chap_row = db_exec(
+                    db_state,
                     "SELECT id FROM chapters WHERE comic_id = ? AND chapter_number = ? LIMIT 1",
                     [comic_id, chap_num],
                 ).rows[0]
@@ -347,7 +403,8 @@ def run_sync(single_comic_url: str = ""):
                             GH_TOKEN,
                         )
 
-                        db.execute(
+                        db_exec(
+                            db_state,
                             '''
                             INSERT INTO chapter_pages
                             (chapter_id, page_index, tg_file_id, gh_fallback_path, width, height, format)
@@ -357,17 +414,20 @@ def run_sync(single_comic_url: str = ""):
                         )
                         page_idx += 1
 
-                db.execute(
-                    "UPDATE comics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [comic_id]
+                db_exec(
+                    db_state,
+                    "UPDATE comics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    [comic_id],
                 )
-                db.execute("UPDATE sync_jobs SET status = 'published' WHERE id = ?", [job_id])
+                db_exec(db_state, "UPDATE sync_jobs SET status = 'published' WHERE id = ?", [job_id])
                 new_chapters_log.append(f"{comic_title} - Chap {chap_num:g} ({page_idx} trang)")
                 print(f"     [OK] Xong Chapter {chap_num:g} ({page_idx} trang AVIF)")
 
             except Exception as err:
                 if chapter_id is not None:
-                    db.execute("DELETE FROM chapter_pages WHERE chapter_id = ?", [chapter_id])
-                db.execute(
+                    db_exec(db_state, "DELETE FROM chapter_pages WHERE chapter_id = ?", [chapter_id])
+                db_exec(
+                    db_state,
                     '''
                     UPDATE sync_jobs
                     SET status = 'pending', retry_count = retry_count + 1, error_log = ?
@@ -385,13 +445,16 @@ def run_sync(single_comic_url: str = ""):
             if new_comics_log:
                 lines.append(f"• <b>Bộ mới ({len(new_comics_log)}):</b> " + ", ".join(new_comics_log[:10]))
             if new_chapters_log:
-                lines.append(f"• <b>Chương mới ({len(new_chapters_log)}):</b>\\n- " + "\\n- ".join(new_chapters_log[:15]))
-            send_admin_telegram("\\n".join(lines))
+                lines.append(f"• <b>Chương mới ({len(new_chapters_log)}):</b>\n- " + "\n- ".join(new_chapters_log[:15]))
+            send_admin_telegram("\n".join(lines))
 
     finally:
         if os.path.exists(TEMP_DIR):
             shutil.rmtree(TEMP_DIR, ignore_errors=True)
-        db.close()
+        try:
+            db_state["client"].close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
@@ -399,4 +462,3 @@ if __name__ == "__main__":
     parser.add_argument("--comic-url", type=str, default="", help="URL bộ truyện cần cào ngay")
     args = parser.parse_args()
     run_sync(single_comic_url=args.comic_url.strip())
-    
