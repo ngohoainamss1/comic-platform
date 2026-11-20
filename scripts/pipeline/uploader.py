@@ -12,6 +12,12 @@ class RateLimitError(Exception):
     pass
 
 
+_HTTP_POOL = httpx.Client(
+    timeout=httpx.Timeout(90.0, connect=15.0),
+    limits=httpx.Limits(max_connections=24, max_keepalive_connections=16),
+)
+
+
 def _handle_tg_response(res: httpx.Response):
     if res.status_code == 429:
         retry_after = 5
@@ -40,8 +46,7 @@ def upload_to_telegram(file_path: str, bot_token: str, channel_id: str, caption:
     with open(file_path, "rb") as f:
         files = {"document": (filename, f, "image/avif")}
         data = {"chat_id": channel_id, "caption": caption[:1000]}
-        with httpx.Client(timeout=45.0) as client:
-            res = client.post(url, data=data, files=files)
+        res = _HTTP_POOL.post(url, data=data, files=files)
 
     result = _handle_tg_response(res)
     doc = result.get("document") or result.get("sticker")
@@ -87,8 +92,7 @@ def _send_telegram_media_chunk(
             "chat_id": channel_id,
             "media": json.dumps(media_payload, ensure_ascii=False),
         }
-        with httpx.Client(timeout=90.0) as client:
-            res = client.post(url, data=data, files=files_dict)
+        res = _HTTP_POOL.post(url, data=data, files=files_dict)
     finally:
         for fh in opened_files:
             try:
@@ -118,7 +122,7 @@ def upload_batch_to_telegram(
         chunk_ids = _send_telegram_media_chunk(chunk, bot_token, channel_id)
         all_ids.extend(chunk_ids)
         if start + chunk_size < len(items):
-            time.sleep(0.35)
+            time.sleep(0.8)
     return all_ids
 
 
@@ -147,19 +151,23 @@ def upload_to_github_backup(
     with open(file_path, "rb") as f:
         b64_content = base64.b64encode(f.read()).decode("utf-8")
 
-    with httpx.Client(timeout=30.0) as client:
-        existing = client.get(api_url, headers=headers)
-        sha = existing.json().get("sha") if existing.status_code == 200 else None
-        body = {"message": f"backup: {clean_path}", "content": b64_content, "branch": "main"}
-        if sha:
-            body["sha"] = sha
-        put_res = client.put(api_url, headers=headers, json=body)
-        if put_res.status_code in (200, 201):
-            return clean_path
+    existing = _HTTP_POOL.get(api_url, headers=headers)
+    sha = existing.json().get("sha") if existing.status_code == 200 else None
+    body = {"message": f"backup: {clean_path}", "content": b64_content, "branch": "main"}
+    if sha:
+        body["sha"] = sha
+    put_res = _HTTP_POOL.put(api_url, headers=headers, json=body)
+    if put_res.status_code in (200, 201):
+        return clean_path
 
     return ""
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+)
 def _create_github_blob(
     local_path: str,
     clean_repo_path: str,
@@ -169,10 +177,9 @@ def _create_github_blob(
     with open(local_path, "rb") as f:
         b64_content = base64.b64encode(f.read()).decode("utf-8")
     blob_url = f"https://api.github.com/repos/{gh_repo}/git/blobs"
-    with httpx.Client(timeout=45.0) as client:
-        res = client.post(blob_url, headers=headers, json={"content": b64_content, "encoding": "base64"})
-        res.raise_for_status()
-        return clean_repo_path, res.json()["sha"]
+    res = _HTTP_POOL.post(blob_url, headers=headers, json={"content": b64_content, "encoding": "base64"})
+    res.raise_for_status()
+    return clean_repo_path, res.json()["sha"]
 
 
 def upload_batch_to_github_backup(
@@ -192,20 +199,19 @@ def upload_batch_to_github_backup(
     base_api = f"https://api.github.com/repos/{gh_repo}"
 
     try:
-        with httpx.Client(timeout=30.0) as client:
-            ref_res = client.get(f"{base_api}/git/ref/heads/main", headers=headers)
-            ref_res.raise_for_status()
-            latest_commit_sha = ref_res.json()["object"]["sha"]
+        ref_res = _HTTP_POOL.get(f"{base_api}/git/ref/heads/main", headers=headers)
+        ref_res.raise_for_status()
+        latest_commit_sha = ref_res.json()["object"]["sha"]
 
-            commit_res = client.get(f"{base_api}/git/commits/{latest_commit_sha}", headers=headers)
-            commit_res.raise_for_status()
-            base_tree_sha = commit_res.json()["tree"]["sha"]
+        commit_res = _HTTP_POOL.get(f"{base_api}/git/commits/{latest_commit_sha}", headers=headers)
+        commit_res.raise_for_status()
+        base_tree_sha = commit_res.json()["tree"]["sha"]
 
         clean_items = [(lp, rp.lstrip("/")) for lp, rp in files]
         tree_entries = []
         uploaded_map: dict[str, str] = {}
 
-        with ThreadPoolExecutor(max_workers=6) as pool:
+        with ThreadPoolExecutor(max_workers=10) as pool:
             futures = [
                 pool.submit(_create_github_blob, lp, rp, gh_repo, headers)
                 for lp, rp in clean_items
@@ -217,36 +223,34 @@ def upload_batch_to_github_backup(
                 )
                 uploaded_map[clean_rp] = clean_rp
 
-        with httpx.Client(timeout=45.0) as client:
-            tree_res = client.post(
-                f"{base_api}/git/trees",
-                headers=headers,
-                json={"base_tree": base_tree_sha, "tree": tree_entries},
-            )
-            tree_res.raise_for_status()
-            new_tree_sha = tree_res.json()["sha"]
+        tree_res = _HTTP_POOL.post(
+            f"{base_api}/git/trees",
+            headers=headers,
+            json={"base_tree": base_tree_sha, "tree": tree_entries},
+        )
+        tree_res.raise_for_status()
+        new_tree_sha = tree_res.json()["sha"]
 
-            new_commit_res = client.post(
-                f"{base_api}/git/commits",
-                headers=headers,
-                json={
-                    "message": commit_message,
-                    "tree": new_tree_sha,
-                    "parents": [latest_commit_sha],
-                },
-            )
-            new_commit_res.raise_for_status()
-            new_commit_sha = new_commit_res.json()["sha"]
+        new_commit_res = _HTTP_POOL.post(
+            f"{base_api}/git/commits",
+            headers=headers,
+            json={
+                "message": commit_message,
+                "tree": new_tree_sha,
+                "parents": [latest_commit_sha],
+            },
+        )
+        new_commit_res.raise_for_status()
+        new_commit_sha = new_commit_res.json()["sha"]
 
-            patch_res = client.patch(
-                f"{base_api}/git/refs/heads/main",
-                headers=headers,
-                json={"sha": new_commit_sha},
-            )
-            patch_res.raise_for_status()
+        patch_res = _HTTP_POOL.patch(
+            f"{base_api}/git/refs/heads/main",
+            headers=headers,
+            json={"sha": new_commit_sha},
+        )
+        patch_res.raise_for_status()
 
         return uploaded_map
     except Exception as e:
         print(f"[Cảnh báo GitHub Backup Batch] {e}")
         return {}
-    
