@@ -14,7 +14,7 @@ class RateLimitError(Exception):
 
 _HTTP_POOL = httpx.Client(
     timeout=httpx.Timeout(90.0, connect=15.0),
-    limits=httpx.Limits(max_connections=24, max_keepalive_connections=16),
+    limits=httpx.Limits(max_connections=32, max_keepalive_connections=20),
 )
 
 
@@ -122,7 +122,7 @@ def upload_batch_to_telegram(
         chunk_ids = _send_telegram_media_chunk(chunk, bot_token, channel_id)
         all_ids.extend(chunk_ids)
         if start + chunk_size < len(items):
-            time.sleep(0.8)
+            time.sleep(0.35)
     return all_ids
 
 
@@ -211,7 +211,7 @@ def upload_batch_to_github_backup(
         tree_entries = []
         uploaded_map: dict[str, str] = {}
 
-        with ThreadPoolExecutor(max_workers=10) as pool:
+        with ThreadPoolExecutor(max_workers=12) as pool:
             futures = [
                 pool.submit(_create_github_blob, lp, rp, gh_repo, headers)
                 for lp, rp in clean_items
