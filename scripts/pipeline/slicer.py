@@ -11,7 +11,7 @@ def find_safe_cut_row(image: pyvips.Image, target_y: int, search_window: int = 2
     if y_min >= y_max:
         return target_y
 
-    band = image.crop(0, y_min, image.width, y_max - y_min)
+    band = image.crop(0, y_min, image.width, y_max - y_min).copy_memory()
     arr = band.numpy()
 
     if arr.ndim == 3:
@@ -29,7 +29,7 @@ def slice_webtoon_image(input_path: str, output_dir: str, prefix: str = "page") 
 
     if img.height <= 2200:
         out_path = os.path.join(output_dir, f"{prefix}_000.png")
-        img.pngsave(out_path)
+        img.copy_memory().pngsave(out_path)
         return [out_path]
 
     chunks: list[str] = []
@@ -48,7 +48,7 @@ def slice_webtoon_image(input_path: str, output_dir: str, prefix: str = "page") 
                 cut_y = raw_target
 
         slice_h = cut_y - current_y
-        piece = img.crop(0, current_y, img.width, slice_h)
+        piece = img.crop(0, current_y, img.width, slice_h).copy_memory()
         out_path = os.path.join(output_dir, f"{prefix}_{chunk_idx:03d}.png")
         piece.pngsave(out_path)
         chunks.append(out_path)
