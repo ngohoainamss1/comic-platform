@@ -16,11 +16,10 @@ from dotenv import load_dotenv
 os.environ.setdefault("VIPS_CONCURRENCY", "1")
 
 try:
-    from curl_cffi import requests as curl_requests, CurlHttpVersion, CurlOpt
+    from curl_cffi import requests as curl_requests, CurlHttpVersion
 except ImportError:
     curl_requests = None
     CurlHttpVersion = None
-    CurlOpt = None
 
 from scripts.pipeline.slicer import pack_and_compress_chapter_images
 from scripts.pipeline.compressor import compress_to_avif
@@ -64,16 +63,26 @@ class ImageNotFoundError(RuntimeError):
     pass
 
 
+def _is_dns_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return any(
+        tok in msg
+        for tok in (
+            "could not resolve host",
+            "name or service not known",
+            "nodename nor servname",
+            "getaddrinfo failed",
+            "temporary failure in name resolution",
+        )
+    )
+
+
 def _get_curl_session():
     if curl_requests is None:
         return None
     sess = getattr(_TLS, "curl_session", None)
     if sess is None:
-        try:
-            opts = {CurlOpt.DOH_URL: "https://1.1.1.1/dns-query"} if (CurlOpt and not CRAWLER_PROXY) else {}
-            sess = curl_requests.Session(curl_options=opts)
-        except TypeError:
-            sess = curl_requests.Session()
+        sess = curl_requests.Session()
         _TLS.curl_session = sess
     return sess
 
@@ -138,19 +147,20 @@ def send_admin_telegram(message: str):
         print(f"[Cảnh báo] Không gửi được thông báo Telegram: {e}")
 
 
-def _expand_image_candidates(packed_url: str) -> list[str]:
-    expanded: list[str] = []
+def _split_image_candidates(packed_url: str) -> tuple[list[str], list[str]]:
+    explicit: list[str] = []
+    guessed: list[str] = []
     for u in (x.strip() for x in packed_url.split("|") if x.strip()):
-        if u not in expanded:
-            expanded.append(u)
+        if u not in explicit:
+            explicit.append(u)
         m = re.match(r"^(https?://(?:img|cdn|sv)(\d+)\.[^/]+)(/.+)$", u, re.IGNORECASE)
         if m:
             host_tpl = re.sub(r"^(https?://(?:img|cdn|sv))\d+", r"\g<1>{}", m.group(1), flags=re.IGNORECASE)
             for idx in (1, 2, 3, 4):
                 alt = f"{host_tpl.format(idx)}{m.group(3)}"
-                if alt not in expanded:
-                    expanded.append(alt)
-    return expanded
+                if alt not in explicit and alt not in guessed:
+                    guessed.append(alt)
+    return explicit, guessed
 
 
 def _download_single_url(url: str, dest_path: str, referer: str = ""):
@@ -182,15 +192,21 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
         try:
             if curl_sess is not None:
                 proxies = {"http": CRAWLER_PROXY, "https": CRAWLER_PROXY} if CRAWLER_PROXY else None
-                res = curl_sess.get(
-                    url,
-                    headers=headers,
-                    impersonate=profiles[(attempt - 1) % len(profiles)],
-                    http_version=CurlHttpVersion.V1_1,
-                    timeout=30,
-                    allow_redirects=True,
-                    proxies=proxies,
-                )
+                try:
+                    res = curl_sess.get(
+                        url,
+                        headers=headers,
+                        impersonate=profiles[(attempt - 1) % len(profiles)],
+                        http_version=CurlHttpVersion.V1_1,
+                        timeout=30,
+                        allow_redirects=True,
+                        proxies=proxies,
+                    )
+                except Exception as curl_err:
+                    if _is_dns_error(curl_err):
+                        res = _IMG_HTTPX.get(url, headers=headers)
+                    else:
+                        raise
             else:
                 res = _IMG_HTTPX.get(url, headers=headers)
 
@@ -206,26 +222,40 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
             raise
         except Exception as e:
             last_err = e
+            if _is_dns_error(e):
+                break
 
     raise RuntimeError(f"Tải ảnh thất bại ({url}): {last_err}")
 
 
 def download_image(packed_url: str, dest_path: str, referer: str = ""):
-    candidates = _expand_image_candidates(packed_url)
+    explicit_urls, guessed_urls = _split_image_candidates(packed_url)
     last_err = None
-    all_not_found = True
-    for cand_url in candidates:
+    explicit_all_404 = True
+
+    for cand_url in explicit_urls:
         try:
             _download_single_url(cand_url, dest_path, referer=referer)
             return
         except ImageNotFoundError as nf_err:
             last_err = nf_err
         except Exception as err:
-            all_not_found = False
+            explicit_all_404 = False
             last_err = err
-    if all_not_found:
-        raise ImageNotFoundError(f"Ảnh không tồn tại trên CDN ({candidates[0]}): {last_err}")
-    raise RuntimeError(f"Tải ảnh thất bại ({candidates[0]}): {last_err}")
+
+    for cand_url in guessed_urls:
+        try:
+            _download_single_url(cand_url, dest_path, referer=referer)
+            return
+        except ImageNotFoundError:
+            pass
+        except Exception as err:
+            if not _is_dns_error(err):
+                last_err = err
+
+    if explicit_all_404:
+        raise ImageNotFoundError(f"Ảnh không tồn tại trên CDN ({explicit_urls[0]}): {last_err}")
+    raise RuntimeError(f"Tải ảnh thất bại ({explicit_urls[0]}): {last_err}")
 
 
 def normalize_vn_slug(title: str) -> str:
