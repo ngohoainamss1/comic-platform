@@ -451,7 +451,7 @@ def run_sync(single_comic_url: str = ""):
             _process_job(db_state, job, get_adapter, single_comic_url, new_chapters_log)
 
         if new_comics_log or new_chapters_log:
-            lines = ["<b>[VinaReader Auto-Sync] Cập nhật mớ
+            lines = ["<b>[VinaReader Auto-Sync] Cập nhật mới thành công:</b>"]
             if new_comics_log:
                 lines.append(f"• <b>Bộ mới ({len(new_comics_log)}):</b> " + ", ".join(new_comics_log[:10]))
             if new_chapters_log:
