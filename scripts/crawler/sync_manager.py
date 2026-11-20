@@ -22,7 +22,7 @@ except ImportError:
     CurlHttpVersion = None
     CurlOpt = None
 
-from scripts.pipeline.slicer import slice_and_compress_to_avif
+from scripts.pipeline.slicer import pack_and_compress_chapter_images
 from scripts.pipeline.compressor import compress_to_avif
 from scripts.pipeline.uploader import (
     upload_to_telegram,
@@ -45,12 +45,14 @@ CRAWLER_COOKIE = os.getenv("CRAWLER_COOKIE", "").strip()
 CRAWLER_PROXY = os.getenv("CRAWLER_PROXY", "").strip()
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "comic_ingest_work")
 
-CHAPTER_WORKERS = int(os.getenv("CRAWLER_CHAPTER_WORKERS", "4"))
-IMAGE_WORKERS = int(os.getenv("CRAWLER_IMAGE_WORKERS", "4"))
+CHAPTER_WORKERS = int(os.getenv("CRAWLER_CHAPTER_WORKERS", "6"))
+IMAGE_WORKERS = int(os.getenv("CRAWLER_IMAGE_WORKERS", "6"))
 BATCH_LIMIT = int(os.getenv("CRAWLER_BATCH_LIMIT", "100"))
 AVIF_MAX_WIDTH = int(os.getenv("AVIF_MAX_WIDTH", "1440"))
 AVIF_QUALITY = int(os.getenv("AVIF_QUALITY", "80"))
-AVIF_EFFORT = int(os.getenv("AVIF_EFFORT", "2"))
+AVIF_EFFORT = int(os.getenv("AVIF_EFFORT", "1"))
+SLICE_TARGET_HEIGHT = int(os.getenv("SLICE_TARGET_HEIGHT", "3600"))
+SLICE_MAX_HEIGHT = int(os.getenv("SLICE_MAX_HEIGHT", "4200"))
 
 _DB_LOCK = threading.Lock()
 _TG_LOCK = threading.Lock()
@@ -80,7 +82,7 @@ _IMG_HTTPX = httpx.Client(
     timeout=30.0,
     follow_redirects=True,
     proxy=CRAWLER_PROXY or None,
-    limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+    limits=httpx.Limits(max_connections=48, max_keepalive_connections=24),
 )
 
 
@@ -162,7 +164,7 @@ def _download_single_url(url: str, dest_path: str, referer: str = ""):
 
     for attempt in range(1, 4):
         if attempt > 1:
-            time.sleep(0.3 * attempt)
+            time.sleep(0.25 * attempt)
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -271,28 +273,18 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
     return comic_id, slug, True
 
 
-def _prepare_source_image(
+def _download_raw_task(
     raw_idx: int,
     img_url: str,
     chap_url: str,
-    work_dir: str,
-) -> tuple[int, list[dict] | None, str | None]:
-    raw_path = os.path.join(work_dir, "raw", f"raw_{raw_idx:03d}.img")
+    raw_dir: str,
+) -> tuple[int, str | None, str | None]:
+    raw_path = os.path.join(raw_dir, f"raw_{raw_idx:03d}.img")
     try:
         download_image(img_url, raw_path, referer=chap_url)
+        return raw_idx, raw_path, None
     except ImageNotFoundError as nf_err:
         return raw_idx, None, str(nf_err)
-
-    avif_dir = os.path.join(work_dir, "avif", f"src_{raw_idx:03d}")
-    items = slice_and_compress_to_avif(
-        raw_path,
-        avif_dir,
-        prefix=f"p{raw_idx:03d}",
-        max_width=AVIF_MAX_WIDTH,
-        quality=AVIF_QUALITY,
-        effort=AVIF_EFFORT,
-    )
-    return raw_idx, items, None
 
 
 def _process_job(
@@ -309,6 +301,8 @@ def _process_job(
     chap_origin = f"{p.scheme}://{p.netloc}" if (p.scheme and p.netloc) else str(job[5])
 
     work_dir = os.path.join(TEMP_DIR, f"job_{job_id}")
+    raw_dir = os.path.join(work_dir, "raw")
+    avif_dir = os.path.join(work_dir, "avif")
     chapter_id = None
     keep_work_dir = False
 
@@ -329,23 +323,34 @@ def _process_job(
 
         with ThreadPoolExecutor(max_workers=IMAGE_WORKERS) as pool:
             futures = [
-                pool.submit(_prepare_source_image, idx, url, chap_url, work_dir)
+                pool.submit(_download_raw_task, idx, url, chap_url, raw_dir)
                 for idx, url in enumerate(img_urls)
             ]
-            prepared_results = [fut.result() for fut in futures]
+            dl_results = [fut.result() for fut in futures]
 
-        prepared_results.sort(key=lambda r: r[0])
-        prepared_pages: list[dict] = []
+        dl_results.sort(key=lambda r: r[0])
+        valid_raw_paths: list[str] = []
         skipped_404 = 0
-        for raw_idx, items, nf_msg in prepared_results:
-            if items is None:
+        for raw_idx, rpath, nf_msg in dl_results:
+            if rpath is None:
                 skipped_404 += 1
                 print(f"     [Bỏ qua ảnh 404 #{raw_idx + 1}] {nf_msg}")
                 continue
-            prepared_pages.extend(items)
+            valid_raw_paths.append(rpath)
 
-        if not prepared_pages:
+        if not valid_raw_paths:
             raise RuntimeError(f"Toàn bộ {len(img_urls)} ảnh của chương đều trả về 404 Not Found.")
+
+        prepared_pages = pack_and_compress_chapter_images(
+            valid_raw_paths,
+            avif_dir,
+            max_width=AVIF_MAX_WIDTH,
+            quality=AVIF_QUALITY,
+            effort=AVIF_EFFORT,
+            target_height=SLICE_TARGET_HEIGHT,
+            max_height=SLICE_MAX_HEIGHT,
+        )
+        shutil.rmtree(raw_dir, ignore_errors=True)
 
         tg_items = [
             (page["path"], f"{comic_title} - Ch.{chap_num:g} - P.{idx + 1}")
@@ -353,7 +358,8 @@ def _process_job(
         ]
         with _TG_LOCK:
             tg_file_ids = upload_batch_to_telegram(tg_items, TG_BOT_TOKEN, TG_CHANNEL_ID, chunk_size=10)
-            time.sleep(0.6)
+            if len(tg_items) > 10:
+                time.sleep(0.35)
 
         upsert_res = db_exec(
             db_state,
@@ -397,7 +403,9 @@ def _process_job(
 
         elapsed = time.time() - t0
         skip_note = f" (bỏ qua {skipped_404} ảnh 404)" if skipped_404 else ""
-        print(f"  [OK] {comic_slug} Ch.{chap_num:g} ({len(prepared_pages)} trang AVIF {AVIF_MAX_WIDTH}px Q{AVIF_QUALITY} trong {elapsed:.1f}s){skip_note}")
+        print(
+            f"  [OK] {comic_slug} Ch.{chap_num:g} ({len(valid_raw_paths)} ảnh gốc -> {len(prepared_pages)} trang AVIF trong {elapsed:.1f}s){skip_note}"
+        )
     except Exception as err:
         if chapter_id is not None:
             db_batch(
@@ -508,7 +516,7 @@ def run_sync(single_comic_url: str = ""):
             print("[Hoàn tất] Không còn chương nào đang chờ xử lý.")
             return
 
-        print(f"[Tăng tốc {CHAPTER_WORKERS}x{IMAGE_WORKERS}] Bắt đầu xử lý {len(jobs_res.rows)} chương...")
+        print(f"[Tăng tốc {CHAPTER_WORKERS}x{IMAGE_WORKERS} | Trang {SLICE_TARGET_HEIGHT}px] Bắt đầu xử lý {len(jobs_res.rows)} chương...")
         with ThreadPoolExecutor(max_workers=CHAPTER_WORKERS) as chapter_pool:
             futs = [
                 chapter_pool.submit(_process_job, db_state, job, single_comic_url, comic_cache, new_chapters_log, pending_gh_files)
