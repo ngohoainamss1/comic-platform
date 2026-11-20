@@ -60,7 +60,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             return f"https:{raw_url}"
         return urljoin(page_url, raw_url)
 
-    def _get(self, url: str, referer: str = "") -> str:
+    def _get(self, url: str, referer: str = "", extra_headers: dict | None = None) -> str:
         origin = self._origin_of(url)
         referer_candidates = []
         for candidate in (referer, origin, ""):
@@ -73,6 +73,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         for attempt in range(1, 4):
             time.sleep(self.delay_seconds * attempt)
             req_headers = dict(self.headers)
+            if extra_headers:
+                req_headers.update(extra_headers)
             current_ref = referer_candidates[(attempt - 1) % len(referer_candidates)]
             if current_ref:
                 req_headers["Referer"] = current_ref
@@ -139,6 +141,97 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
 
         return results[:30]
 
+    def _parse_chapter_entries(self, soup: BeautifulSoup, page_url: str) -> list[ChapterInfo]:
+        chapters: list[ChapterInfo] = []
+        seen_nums: set[float] = set()
+
+        chapter_links = soup.select(
+            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, "
+            "#nt_listchapter .chapter a, #list-chapter a, .list-chapter a, "
+            ".list_chapter a, .chapter-list a, .works-chapter-list a, "
+            ".box-list-chapter a, .row-content-chapter a, .wp-manga-chapter a, "
+            "ul.chapters a, .episode-list a"
+        )
+        if not chapter_links:
+            chapter_links = [
+                a
+                for a in soup.select("a[href]")
+                if any(
+                    k in (a.get("href") or "").lower()
+                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-")
+                )
+            ]
+
+        for a in chapter_links:
+            href = self._normalize_url(a.get("href", ""), page_url)
+            text = a.get_text(" ", strip=True)
+            match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+            if not match:
+                match = re.search(r"(\d+(?:\.\d+)?)", text)
+            if not match:
+                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
+            if match and href:
+                num = float(match.group(1))
+                if num not in seen_nums:
+                    seen_nums.add(num)
+                    chap_title = text if re.search(r"\d", text) else f"Chapter {num:g}"
+                    chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
+
+        for opt in soup.select("select.select-chapter option, .chapter-nav select option, select[name*='chapter'] option"):
+            raw_val = (opt.get("value") or opt.get("data-url") or "").strip()
+            if not raw_val or raw_val.startswith("#"):
+                continue
+            href = self._normalize_url(raw_val, page_url)
+            text = opt.get_text(" ", strip=True)
+            match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+            if not match:
+                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
+            if match and href:
+                num = float(match.group(1))
+                if num not in seen_nums:
+                    seen_nums.add(num)
+                    chap_title = text if re.search(r"\d", text) else f"Chapter {num:g}"
+                    chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
+
+        chapters.sort(key=lambda c: c.chapter_number)
+        return chapters
+
+    def _try_fetch_ajax_chapters(self, comic_url: str, soup: BeautifulSoup) -> list[ChapterInfo]:
+        origin = self._origin_of(comic_url).rstrip("/")
+        comic_id = ""
+        id_match = re.search(r"-(\d+)(?:/)?$", comic_url)
+        if id_match:
+            comic_id = id_match.group(1)
+        if not comic_id:
+            el_with_id = soup.select_one("[data-id], input#comicId, input[name='comicId']")
+            if el_with_id:
+                comic_id = (el_with_id.get("data-id") or el_with_id.get("value") or "").strip()
+
+        if not comic_id:
+            return []
+
+        ajax_endpoints = [
+            f"{origin}/Comic/Services/ComicService.asmx/GetChapterList?comicId={comic_id}",
+            f"{origin}/Comic/Services/ComicService.asmx/ProcessRequest?comicId={comic_id}",
+        ]
+        for ep in ajax_endpoints:
+            try:
+                raw_resp = self._get(
+                    ep,
+                    referer=comic_url,
+                    extra_headers={"X-Requested-With": "XMLHttpRequest"},
+                )
+                if not raw_resp:
+                    continue
+                cleaned = raw_resp.replace("\\/", "/").replace('\\"', '"')
+                sub_soup = BeautifulSoup(cleaned, "html.parser")
+                parsed = self._parse_chapter_entries(sub_soup, comic_url)
+                if len(parsed) > 2:
+                    return parsed
+            except Exception:
+                continue
+        return []
+
     def fetch_comic_metadata(self, comic_url: str) -> ComicDetail:
         html = self._get(comic_url, referer=self._origin_of(comic_url))
         soup = BeautifulSoup(html, "html.parser")
@@ -175,41 +268,22 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             if g.get_text(strip=True)
         ]
 
-        chapters: list[ChapterInfo] = []
-        seen_nums: set[float] = set()
-        chapter_links = soup.select(
-            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, "
-            "#nt_listchapter .chapter a, #list-chapter a, .list-chapter a, "
-            ".list_chapter a, .chapter-list a, .works-chapter-list a, "
-            ".box-list-chapter a, .row-content-chapter a, .wp-manga-chapter a, "
-            "ul.chapters a, .episode-list a"
-        )
-        if not chapter_links:
-            chapter_links = [
-                a
-                for a in soup.select("a[href]")
-                if any(
-                    k in (a.get("href") or "").lower()
-                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-")
-                )
-            ]
+        chapters = self._parse_chapter_entries(soup, comic_url)
 
-        for a in chapter_links:
-            href = self._normalize_url(a.get("href", ""), comic_url)
-            text = a.get_text(" ", strip=True)
-            match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
-            if not match:
-                match = re.search(r"(\d+(?:\.\d+)?)", text)
-            if not match:
-                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
-            if match and href:
-                num = float(match.group(1))
-                if num not in seen_nums:
-                    seen_nums.add(num)
-                    chap_title = text if re.search(r"\d", text) else f"Chapter {num:g}"
-                    chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
+        if len(chapters) <= 2:
+            ajax_chapters = self._try_fetch_ajax_chapters(comic_url, soup)
+            if len(ajax_chapters) > len(chapters):
+                chapters = ajax_chapters
 
-        chapters.sort(key=lambda c: c.chapter_number)
+        if len(chapters) <= 2 and chapters:
+            try:
+                sample_chap_html = self._get(chapters[0].url, referer=comic_url)
+                sample_soup = BeautifulSoup(sample_chap_html, "html.parser")
+                dropdown_chapters = self._parse_chapter_entries(sample_soup, chapters[0].url)
+                if len(dropdown_chapters) > len(chapters):
+                    chapters = dropdown_chapters
+            except Exception:
+                pass
 
         return ComicDetail(
             title=title,
@@ -245,18 +319,25 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             "data-img", "data-echo", "data-cfsrc", "data-full-src", "src",
         )
 
-        def _extract_src(img_tag) -> str:
+        def _extract_candidates(img_tag) -> list[str]:
+            found: list[str] = []
             for attr in img_attrs:
                 val = (img_tag.get(attr) or "").strip()
-                if val and not val.startswith("data:"):
-                    return val
+                if val and not val.startswith("data:") and val not in found:
+                    found.append(val)
+            onerror_js = (img_tag.get("onerror") or "").strip()
+            if onerror_js:
+                for m in re.finditer(r"""(?:this\.src|src)\s*=\s*['"]([^'"]+)['"]""", onerror_js):
+                    cand = m.group(1).strip()
+                    if cand and not cand.startswith("data:") and cand not in found:
+                        found.append(cand)
             for srcset_attr in ("data-srcset", "srcset"):
                 srcset = (img_tag.get(srcset_attr) or "").strip()
                 if srcset:
                     first_entry = srcset.split(",")[0].strip().split(" ")[0].strip()
-                    if first_entry and not first_entry.startswith("data:"):
-                        return first_entry
-            return ""
+                    if first_entry and not first_entry.startswith("data:") and first_entry not in found:
+                        found.append(first_entry)
+            return found
 
         def _is_valid(url_str: str) -> bool:
             low = url_str.lower()
@@ -278,11 +359,11 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             ".vung-doc img, .vung_doc img, #reader img, .viewer img, .comic-viewer img"
         )
         for img in soup.select(reader_selectors):
-            src = _extract_src(img)
-            if _is_valid(src):
-                normalized = self._normalize_url(src, chapter_url)
-                if normalized not in imgs:
-                    imgs.append(normalized)
+            cands = [self._normalize_url(c, chapter_url) for c in _extract_candidates(img) if _is_valid(c)]
+            if cands:
+                packed = "|".join(dict.fromkeys(cands))
+                if packed not in imgs:
+                    imgs.append(packed)
 
         if imgs:
             return imgs
@@ -303,21 +384,21 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             ):
                 continue
 
-            src = _extract_src(img)
-            if not _is_valid(src):
+            cands = [self._normalize_url(c, chapter_url) for c in _extract_candidates(img) if _is_valid(c)]
+            if not cands:
                 continue
 
             meta_hint = (
                 f"{img.get('alt') or ''} {img.get('id') or ''} "
-                f"{' '.join(img.get('class') or [])} {src}"
+                f"{' '.join(img.get('class') or [])} {cands[0]}"
             ).lower()
             if any(
                 h in meta_hint
                 for h in ("trang", "page", "chap", "chuong", "comic", "manga", "truyen", "cdn", "storage", "/0", "/1")
             ):
-                normalized = self._normalize_url(src, chapter_url)
-                if normalized not in imgs:
-                    imgs.append(normalized)
+                packed = "|".join(dict.fromkeys(cands))
+                if packed not in imgs:
+                    imgs.append(packed)
 
         if imgs:
             return imgs
@@ -344,4 +425,3 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             )
 
         return imgs
-        
