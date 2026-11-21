@@ -46,6 +46,22 @@ export interface PageItem {
   format: string;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface HistoryItem {
+  slug: string;
+  title: string;
+  cover_url: string;
+  chapter_id: number;
+  chapter_number: number;
+  read_at: number;
+}
+
 export function resolveAssetUrl(path: string): string {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -77,14 +93,20 @@ export async function fetchComics(params: {
   limit?: number;
   q?: string;
   sort?: string;
+  status?: string;
   inc?: string[];
   exc?: string[];
-}) {
+}): Promise<{
+  success: boolean;
+  data: ComicSummary[];
+  pagination?: PaginationMeta;
+}> {
   const search = new URLSearchParams();
   if (params.page) search.set('page', String(params.page));
   if (params.limit) search.set('limit', String(params.limit));
   if (params.q) search.set('q', params.q);
   if (params.sort) search.set('sort', params.sort);
+  if (params.status && params.status !== 'all') search.set('status', params.status);
   if (params.inc?.length) search.set('inc', params.inc.join(','));
   if (params.exc?.length) search.set('exc', params.exc.join(','));
 
@@ -104,7 +126,14 @@ export async function fetchChapterPages(chapterId: number) {
   const json = await res.json();
   if (!json.success) throw new Error(json.message || 'Lỗi tải chương');
   return json.data as {
-    chapter: { id: number; comic_id: number; chapter_number: number; title: string; comic_slug: string; comic_title: string };
+    chapter: {
+      id: number;
+      comic_id: number;
+      chapter_number: number;
+      title: string;
+      comic_slug: string;
+      comic_title: string;
+    };
     prev_chapter: { id: number; chapter_number: number } | null;
     next_chapter: { id: number; chapter_number: number } | null;
     pages: PageItem[];
@@ -113,4 +142,6 @@ export async function fetchChapterPages(chapterId: number) {
 
 export async function recordComicView(comicId: number): Promise<void> {
   fetch(`${API_BASE}/api/comics/${comicId}/view`, { method: 'POST' }).catch(() => {});
+}
+{API_BASE}/api/comics/${comicId}/view`, { method: 'POST' }).catch(() => {});
 }
