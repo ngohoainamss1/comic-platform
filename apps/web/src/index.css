@@ -7,11 +7,23 @@
   --sab: env(safe-area-inset-bottom, 0px);
 }
 
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
 body {
+  background-color: #09090c;
   padding-top: var(--sat);
-  padding-bottom: calc(4.25rem + var(--sab));
+  padding-bottom: calc(4.5rem + var(--sab));
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+}
+
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 1.5rem;
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -20,4 +32,19 @@ body {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #09090c;
+}
+::-webkit-scrollbar-thumb {
+  background: #272732;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f43f5e;
 }
