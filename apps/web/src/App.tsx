@@ -132,11 +132,15 @@ function ComicCard({ item, onSelect, rankBadge, lastReadChapter }: ComicCardProp
           </span>
         )}
 
-        {typeof lastReadChapter === 'number' && (
+        {typeof lastReadChapter === 'number' && item.latest_chapter !== null && item.latest_chapter > lastReadChapter ? (
+          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-lg bg-gradient-to-r from-rose-600 to-orange-500 text-white text-[10px] font-black shadow-lg shadow-rose-600/40 backdrop-blur-md animate-pulse">
+            +{Math.max(1, Math.round(item.latest_chapter - lastReadChapter))} mới
+          </span>
+        ) : typeof lastReadChapter === 'number' ? (
           <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-violet-600/90 text-white text-[10px] font-bold shadow-md shadow-violet-600/30 backdrop-blur-md">
             Đọc Ch.{lastReadChapter}
           </span>
-        )}
+        ) : null}
 
         <div className="absolute bottom-2 inset-x-2 flex items-center justify-between text-[10px] text-zinc-200 font-medium">
           <span className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-white/10">
@@ -471,6 +475,36 @@ export default function App() {
     const copy = { ...readHistory }; delete copy[slug];
     setReadHistory(copy); localStorage.setItem('vr_history_v2', JSON.stringify(copy));
   };
+
+  useEffect(() => {
+    const freshMap = new Map<string, ComicSummary>();
+    [...featuredComics, ...comics].forEach((c) => freshMap.set(c.slug, c));
+    if (freshMap.size === 0) return;
+
+    setBookmarks((prev) => {
+      let changed = false;
+      const next = prev.map((b) => {
+        const fresh = freshMap.get(b.slug);
+        if (fresh && (fresh.latest_chapter !== b.latest_chapter || fresh.updated_at !== b.updated_at)) {
+          changed = true;
+          return { ...b, latest_chapter: fresh.latest_chapter, updated_at: fresh.updated_at, status: fresh.status };
+        }
+        return b;
+      });
+      if (changed) {
+        localStorage.setItem('vr_bookmarks', JSON.stringify(next));
+        return next;
+      }
+      return prev;
+    });
+  }, [comics, featuredComics]);
+
+  const unreadBookmarkCount = useMemo(() => {
+    return bookmarks.filter((b) => {
+      const h = readHistory[b.slug];
+      return h && b.latest_chapter !== null && b.latest_chapter > h.chapter_number;
+    }).length;
+  }, [bookmarks, readHistory]);
 
   const historyList = useMemo(() => Object.values(readHistory).sort((a, b) => b.read_at - a.read_at), [readHistory]);
   const activeFilterCount = useMemo(() => Object.values(genreStates).filter(v => v !== 'neutral').length + (statusFilter !== 'all' ? 1 : 0) + (searchQuery.trim() ? 1 : 0), [genreStates, statusFilter, searchQuery]);
@@ -834,7 +868,7 @@ export default function App() {
           </button>
 
           <nav className="hidden md:flex items-center gap-1.5 bg-[#121218]/50 p-1.5 rounded-2xl border border-white/5">
-            {[ { key: 'home', label: 'Trang chủ', icon: Home }, { key: 'explore', label: 'Khám phá', icon: Compass }, { key: 'ranking', label: 'Xếp hạng', icon: Trophy }, { key: 'library', label: `Tủ sách ${bookmarks.length>0 ? `(${bookmarks.length})` : ''}`, icon: Bookmark } ].map(nav => {
+            {[ { key: 'home', label: 'Trang chủ', icon: Home }, { key: 'explore', label: 'Khám phá', icon: Compass }, { key: 'ranking', label: 'Xếp hạng', icon: Trophy }, { key: 'library', label: unreadBookmarkCount > 0 ? `Tủ sách (+${unreadBookmarkCount})` : `Tủ sách ${bookmarks.length>0 ? `(${bookmarks.length})` : ''}`, icon: Bookmark } ].map(nav => {
               const Icon = nav.icon;
               const active = activeTab === nav.key;
               return (
@@ -1194,8 +1228,15 @@ export default function App() {
             const Icon = nav.icon;
             const active = activeTab === nav.key;
             return (
-              <button key={nav.key} onClick={() => navigateTab(nav.key as TabKey)} className={`flex flex-col items-center justify-center gap-1 w-full h-full transition ${active ? 'text-rose-500' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                <Icon className={`w-5 h-5 ${active ? 'fill-rose-500/20' : ''}`} />
+              <button key={nav.key} onClick={() => navigateTab(nav.key as TabKey)} className={`relative flex flex-col items-center justify-center gap-1 w-full h-full transition ${active ? 'text-rose-500' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <div className="relative">
+                  <Icon className={`w-5 h-5 ${active ? 'fill-rose-500/20' : ''}`} />
+                  {nav.key === 'library' && unreadBookmarkCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center shadow">
+                      {unreadBookmarkCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[9px] font-black uppercase">{nav.label}</span>
               </button>
             );

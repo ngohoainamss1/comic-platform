@@ -2,6 +2,7 @@
 import os
 import re
 import time
+import random
 import threading
 from urllib.parse import urljoin, urlparse
 import httpx
@@ -14,6 +15,14 @@ try:
 except ImportError:
     curl_requests = None
     CurlOpt = None
+
+
+
+class SourceBlockedError(RuntimeError):
+    def __init__(self, message: str, status_code: int = 0, host: str = ""):
+        super().__init__(message)
+        self.status_code = status_code
+        self.host = host
 
 
 class StandardHtmlRssAdapter(BaseSourceAdapter):
@@ -79,9 +88,12 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         last_err = None
         curl_sess = self._get_curl_session()
 
+        host = urlparse(url).netloc.lower()
+        blocked_err: SourceBlockedError | None = None
+
         for attempt in range(1, 4):
             if attempt > 1:
-                time.sleep(self.delay_seconds * attempt)
+                time.sleep(self.delay_seconds * attempt + random.uniform(0.15, 0.45))
             req_headers = dict(self.headers)
             if extra_headers:
                 req_headers.update(extra_headers)
@@ -100,15 +112,30 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                         allow_redirects=True,
                         proxies=proxies,
                     )
-                    res.raise_for_status()
-                    return res.text
+                else:
+                    res = self._httpx_client.get(url, headers=req_headers)
 
-                res = self._httpx_client.get(url, headers=req_headers)
+                status = int(getattr(res, "status_code", 0) or 0)
+                body = res.text or ""
+                if status in (403, 429, 503):
+                    blocked_err = SourceBlockedError(f"HTTP {status} tại {host}", status_code=status, host=host)
+                    last_err = blocked_err
+                    continue
+                if "cf-browser-verification" in body or "<title>Just a moment...</title>" in body:
+                    blocked_err = SourceBlockedError(f"Cloudflare challenge tại {host}", status_code=403, host=host)
+                    last_err = blocked_err
+                    continue
+
                 res.raise_for_status()
-                return res.text
+                return body
+            except SourceBlockedError as b_err:
+                blocked_err = b_err
+                last_err = b_err
             except Exception as err:
                 last_err = err
 
+        if blocked_err is not None:
+            raise blocked_err
         raise RuntimeError(f"GET thất bại ({url}): {last_err}")
 
     def fetch_latest_updates(self) -> list[ComicSummary]:

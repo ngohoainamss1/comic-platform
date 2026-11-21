@@ -94,3 +94,23 @@ INSERT OR IGNORE INTO genres (slug, name) VALUES
 ('the-thao', 'Thể Thao'), ('vo-thuat', 'Võ Thuật'), ('co-dai', 'Cổ Đại'),
 ('he-thong', 'Hệ Thống'), ('trong-sinh', 'Trọng Sinh'), ('hau-cung', 'Hậu Cung'),
 ('one-shot', 'One Shot');
+
+CREATE TABLE IF NOT EXISTS comic_watchlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comic_id INTEGER NOT NULL UNIQUE,
+    source_id INTEGER NOT NULL,
+    source_comic_url TEXT NOT NULL,
+    last_known_chapter REAL DEFAULT 0,
+    avg_release_hours REAL DEFAULT 168,
+    check_interval_mins INTEGER DEFAULT 60,
+    priority INTEGER DEFAULT 5,
+    next_check_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_checked_at DATETIME,
+    last_new_chapter_at DATETIME,
+    consecutive_errors INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id) REFERENCES sync_sources(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_due ON comic_watchlists(status, next_check_at ASC, priority DESC);
