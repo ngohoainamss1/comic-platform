@@ -306,11 +306,43 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         status_text = status_el.get_text(strip=True).lower() if status_el else ""
         status = "completed" if ("hoàn thành" in status_text or "completed" in status_text) else "ongoing"
 
-        genres = [
-            g.get_text(strip=True)
-            for g in soup.select(".kind p.col-xs-8 a, .genres a, .tags a, a[href*='the-loai']")
-            if g.get_text(strip=True)
+        raw_genres = [
+            g.get_text(" ", strip=True)
+            for g in soup.select(
+                ".kind p.col-xs-8 a, .kind .col-xs-8 a, .genres a, .genres-content a, "
+                ".tags a, .list-info a[href*='the-loai'], .detail-info a[href*='the-loai'], "
+                ".comic-info a[href*='the-loai'], a[href*='/the-loai/'], a[href*='/genre/']"
+            )
+            if g.get_text(" ", strip=True)
         ]
+        skip_genre_tokens = {"tất cả", "all", "đang cập nhật", "truyện tranh", "thể loại"}
+        genres: list[str] = []
+        seen_g: set[str] = set()
+        for g_name in raw_genres:
+            clean_g = re.sub(r"\s+", " ", g_name).strip(" ,;-|")
+            low_g = clean_g.lower()
+            if not clean_g or len(clean_g) > 45 or low_g in skip_genre_tokens or low_g in seen_g:
+                continue
+            seen_g.add(low_g)
+            genres.append(clean_g)
+
+        author = ""
+        author_el = soup.select_one(
+            ".author p.col-xs-8, .author .col-xs-8, .author-content, "
+            ".info-item .author, li.author p:last-child, "
+            ".detail-info a[href*='tac-gia'], a[href*='/tac-gia/'], a[href*='/author/']"
+        )
+        if author_el:
+            author = re.sub(r"\s+", " ", author_el.get_text(" ", strip=True)).strip()
+        if not author:
+            for li in soup.select(".list-info li, .detail-info li, .info-item, tr"):
+                txt = re.sub(r"\s+", " ", li.get_text(" ", strip=True))
+                m_au = re.match(r"^(?:tác giả|author)\s*[:：]?\s*(.+)$", txt, re.IGNORECASE)
+                if m_au:
+                    author = m_au.group(1).strip()
+                    break
+        if author.lower() in {"đang cập nhật", "updating", "unknown", "n/a", "chưa rõ", "none", "-", ""}:
+            author = ""
 
         chapters = self._parse_chapter_entries(soup, comic_url)
 
@@ -337,6 +369,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             status=status,
             genres=genres,
             chapters=chapters,
+            author=author,
         )
 
     def fetch_chapter_images(self, chapter_url: str, referer_url: str = "") -> list[str]:

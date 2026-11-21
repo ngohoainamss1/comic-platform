@@ -27,6 +27,7 @@ apiRoutes.get('/comics', async (c) => {
     const q = (c.req.query('q') || '').trim();
     const sort = c.req.query('sort') || 'latest';
     const status = c.req.query('status') || 'all';
+    const authorSlug = (c.req.query('author') || '').trim();
     const incRaw = (c.req.query('inc') || '').trim();
     const excRaw = (c.req.query('exc') || '').trim();
 
@@ -45,6 +46,13 @@ apiRoutes.get('/comics', async (c) => {
     if (status === 'ongoing' || status === 'completed') {
       conditions.push('c.status = ?');
       args.push(status);
+    }
+
+    if (authorSlug) {
+      conditions.push(
+        'EXISTS (SELECT 1 FROM authors a WHERE a.id = c.author_id AND a.slug = ?)'
+      );
+      args.push(authorSlug);
     }
 
     for (const slug of incSlugs) {
@@ -199,6 +207,59 @@ apiRoutes.get('/comics/:slug', async (c) => {
       ? await signImageUrl(coverFileId, c.env.HMAC_SECRET_KEY, ttl, coverGhPath)
       : '';
 
+    let authorObj: { id: number; slug: string; name: string } | null = null;
+    let sameAuthorComics: any[] = [];
+    const authorId = comic.author_id !== null && comic.author_id !== undefined ? Number(comic.author_id) : null;
+    if (authorId && Number.isFinite(authorId)) {
+      try {
+        const [aRes, relRes] = await Promise.all([
+          db.execute({ sql: 'SELECT id, slug, name FROM authors WHERE id = ? LIMIT 1', args: [authorId] }),
+          db.execute({
+            sql: `
+              SELECT c.id, c.slug, c.title, c.cover_file_id, c.cover_gh_path, c.status,
+                     c.views_day, c.views_week, c.views_month, c.views_total, c.rating_avg, c.updated_at,
+                     (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter
+              FROM comics c
+              WHERE c.author_id = ? AND c.id != ?
+              ORDER BY c.updated_at DESC
+              LIMIT 8
+            `,
+            args: [authorId, comicId],
+          }),
+        ]);
+        if (aRes.rows.length > 0) {
+          authorObj = {
+            id: Number(aRes.rows[0].id),
+            slug: String(aRes.rows[0].slug),
+            name: String(aRes.rows[0].name),
+          };
+        }
+        sameAuthorComics = await Promise.all(
+          relRes.rows.map(async (row) => {
+            const rf = String(row.cover_file_id || '');
+            const rg = String(row.cover_gh_path || '');
+            return {
+              id: Number(row.id),
+              slug: String(row.slug),
+              title: String(row.title),
+              cover_url: rf ? await signImageUrl(rf, c.env.HMAC_SECRET_KEY, ttl, rg) : '',
+              status: String(row.status),
+              views_day: Number(row.views_day || 0),
+              views_week: Number(row.views_week || 0),
+              views_month: Number(row.views_month || 0),
+              views_total: Number(row.views_total || 0),
+              rating_avg: Number(row.rating_avg || 5.0),
+              latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+              updated_at: String(row.updated_at),
+            };
+          })
+        );
+      } catch {
+        authorObj = null;
+        sameAuthorComics = [];
+      }
+    }
+
     return c.json({
       success: true,
       data: {
@@ -213,6 +274,8 @@ apiRoutes.get('/comics/:slug', async (c) => {
         rating_avg: Number(comic.rating_avg || 5.0),
         rating_count: Number(comic.rating_count || 1),
         updated_at: String(comic.updated_at),
+        author: authorObj,
+        same_author_comics: sameAuthorComics,
         genres: genresRes.rows,
         chapters: chaptersRes.rows,
       },

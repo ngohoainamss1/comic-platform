@@ -9,3 +9,4 @@ feedparser==6.0.11
 python-slugify==8.0.4
 
 curl-cffi
+Pillow>=10.0.0

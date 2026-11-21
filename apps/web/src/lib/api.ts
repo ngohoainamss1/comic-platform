@@ -30,10 +30,18 @@ export interface ChapterItem {
   created_at: string;
 }
 
+export interface AuthorItem {
+  id: number;
+  slug: string;
+  name: string;
+}
+
 export interface ComicDetail extends ComicSummary {
   alt_titles: string;
   description: string;
   rating_count: number;
+  author?: AuthorItem | null;
+  same_author_comics?: ComicSummary[];
   genres: GenreItem[];
   chapters: ChapterItem[];
 }
@@ -70,6 +78,7 @@ export interface FetchComicsParams {
   q?: string;
   sort?: string;
   status?: string;
+  author?: string;
   inc?: string[];
   exc?: string[];
   signal?: AbortSignal;
@@ -238,6 +247,7 @@ export async function fetchComics(params: FetchComicsParams = {}): Promise<Comic
   if (params.q?.trim()) search.set('q', params.q.trim());
   if (params.sort) search.set('sort', params.sort);
   if (params.status && params.status !== 'all') search.set('status', params.status);
+  if (params.author) search.set('author', params.author);
   if (params.inc?.length) search.set('inc', params.inc.join(','));
   if (params.exc?.length) search.set('exc', params.exc.join(','));
 

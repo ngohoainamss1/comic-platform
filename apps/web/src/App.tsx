@@ -756,6 +756,13 @@ export default function App() {
                   </p>
                 )}
 
+                {selectedComic.author && (
+                  <p className="mt-2 text-xs text-zinc-300">
+                    <span className="text-zinc-500 font-bold uppercase text-[10px] mr-1.5 border border-white/10 px-1.5 py-0.5 rounded">Tác giả</span>
+                    <span className="font-bold text-rose-400">{selectedComic.author.name}</span>
+                  </p>
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs">
                   <span className={`px-2.5 py-1.5 rounded-lg font-black uppercase tracking-wider text-[10px] shadow-sm ${selectedComic.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/20 text-rose-400 border border-rose-500/20'}`}>
                     {selectedComic.status === 'completed' ? 'Hoàn thành' : 'Đang ra'}
@@ -848,6 +855,25 @@ export default function App() {
               );
             })}
           </div>
+
+          {selectedComic.same_author_comics && selectedComic.same_author_comics.length > 0 && (
+            <div className="mt-10 space-y-4">
+              <h2 className="text-base font-black flex items-center gap-2 text-white">
+                <Sparkles className="w-4 h-4 text-rose-500" />
+                Cùng tác giả: <span className="text-rose-400">{selectedComic.author?.name}</span>
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {selectedComic.same_author_comics.map((rel) => (
+                  <ComicCard
+                    key={rel.slug}
+                    item={rel}
+                    onSelect={openComic}
+                    lastReadChapter={readHistory[rel.slug]?.chapter_number}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

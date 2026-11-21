@@ -1,3 +1,9 @@
+CREATE TABLE IF NOT EXISTS authors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS comics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT NOT NULL UNIQUE,
@@ -7,6 +13,7 @@ CREATE TABLE IF NOT EXISTS comics (
     cover_file_id TEXT DEFAULT '',
     cover_gh_path TEXT DEFAULT '',
     status TEXT DEFAULT 'ongoing',
+    author_id INTEGER DEFAULT NULL,
     views_day INTEGER DEFAULT 0,
     views_week INTEGER DEFAULT 0,
     views_month INTEGER DEFAULT 0,
@@ -78,6 +85,7 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comics_updated ON comics(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id);
 CREATE INDEX IF NOT EXISTS idx_comics_top_day ON comics(views_day DESC);
 CREATE INDEX IF NOT EXISTS idx_comics_top_week ON comics(views_week DESC);
 CREATE INDEX IF NOT EXISTS idx_comics_top_month ON comics(views_month DESC);

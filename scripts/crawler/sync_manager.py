@@ -24,6 +24,7 @@ except ImportError:
     CurlHttpVersion = None
 
 from scripts.pipeline.slicer import pack_and_compress_chapter_images
+from scripts.pipeline.branding import apply_chapter_branding
 from scripts.pipeline.compressor import compress_to_avif
 from scripts.pipeline.uploader import (
     upload_to_telegram,
@@ -56,6 +57,8 @@ AVIF_QUALITY = int(os.getenv("AVIF_QUALITY", "80"))
 AVIF_EFFORT = int(os.getenv("AVIF_EFFORT", "1"))
 SLICE_TARGET_HEIGHT = int(os.getenv("SLICE_TARGET_HEIGHT", "3600"))
 SLICE_MAX_HEIGHT = int(os.getenv("SLICE_MAX_HEIGHT", "4200"))
+STRIP_SOURCE_WATERMARKS = os.getenv("STRIP_SOURCE_WATERMARKS", "1").strip() != "0"
+BRAND_ENABLE_BANNERS = os.getenv("BRAND_ENABLE_BANNERS", "1").strip() != "0"
 
 _DB_LOCK = threading.Lock()
 _TG_LOCK = threading.Lock()
@@ -190,7 +193,22 @@ def db_batch(db_state: dict, stmts: list[tuple[str, list]]):
 
 
 def ensure_watchlist_schema(db_state: dict):
-    """Tự động tạo bảng comic_watchlists trên Turso nếu chưa tồn tại."""
+    """Tự động tạo bảng authors, cột comics.author_id và bảng comic_watchlists trên Turso nếu chưa có."""
+    db_exec(
+        db_state,
+        """
+        CREATE TABLE IF NOT EXISTS authors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL
+        )
+        """,
+    )
+    try:
+        db_exec(db_state, "ALTER TABLE comics ADD COLUMN author_id INTEGER DEFAULT NULL")
+    except Exception:
+        pass
+    db_exec(db_state, "CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id)")
     db_exec(
         db_state,
         """
@@ -555,11 +573,46 @@ def _upload_cover(detail, slug: str, page_url: str) -> tuple[str, str]:
         return "", ""
 
 
+def sync_author(db_state: dict, author_name: str) -> int | None:
+    clean_name = re.sub(r"\s+", " ", (author_name or "")).strip()
+    if not clean_name or clean_name.lower() in {"đang cập nhật", "updating", "unknown", "n/a", "chưa rõ", "-"}:
+        return None
+    a_slug = normalize_vn_slug(clean_name)
+    if not a_slug:
+        return None
+    db_exec(db_state, "INSERT OR IGNORE INTO authors (slug, name) VALUES (?, ?)", [a_slug, clean_name])
+    row = db_exec(db_state, "SELECT id FROM authors WHERE slug = ? LIMIT 1", [a_slug]).rows
+    return int(row[0][0]) if row else None
+
+
+def sync_comic_genres(db_state: dict, comic_id: int, raw_genres: list[str]):
+    if not raw_genres:
+        return
+    for raw_genre in raw_genres:
+        clean_name = re.sub(r"\s+", " ", (raw_genre or "")).strip(" ,;-|")
+        if not clean_name:
+            continue
+        g_slug = normalize_vn_slug(clean_name)
+        if not g_slug:
+            continue
+        # Tự động thêm thể loại mới nếu chưa tồn tại trong DB
+        db_exec(db_state, "INSERT OR IGNORE INTO genres (slug, name) VALUES (?, ?)", [g_slug, clean_name])
+        g_row = db_exec(db_state, "SELECT id FROM genres WHERE slug = ? OR lower(name) = lower(?) LIMIT 1", [g_slug, clean_name]).rows
+        if g_row:
+            db_exec(
+                db_state,
+                "INSERT OR IGNORE INTO comic_genres (comic_id, genre_id) VALUES (?, ?)",
+                [comic_id, int(g_row[0][0])],
+            )
+
+
 def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str, bool]:
     slug = normalize_vn_slug(detail.title)
+    author_id = sync_author(db_state, getattr(detail, "author", ""))
+
     existing = db_exec(
         db_state,
-        "SELECT id, cover_file_id, status, description, alt_titles FROM comics WHERE slug = ? LIMIT 1",
+        "SELECT id, cover_file_id, status, description, alt_titles, author_id FROM comics WHERE slug = ? LIMIT 1",
         [slug],
     )
     if existing.rows:
@@ -568,6 +621,7 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
         old_status = str(existing.rows[0][2] or "ongoing")
         old_desc = str(existing.rows[0][3] or "")
         old_alt = str(existing.rows[0][4] or "")
+        old_author_id = existing.rows[0][5]
 
         updates = []
         params = []
@@ -585,24 +639,25 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
         if not old_alt and detail.alt_titles:
             updates.append("alt_titles = ?")
             params.append(detail.alt_titles)
+        if author_id is not None and not old_author_id:
+            updates.append("author_id = ?")
+            params.append(author_id)
 
         if updates:
             params.append(comic_id)
             db_exec(db_state, f"UPDATE comics SET {', '.join(updates)} WHERE id = ?", params)
 
+        sync_comic_genres(db_state, comic_id, detail.genres)
         return comic_id, slug, False
 
     tg_id, gh_path = _upload_cover(detail, slug, page_url)
     db_exec(
         db_state,
-        "INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [slug, detail.title, detail.alt_titles, detail.description, tg_id, gh_path, detail.status],
+        "INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status, author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [slug, detail.title, detail.alt_titles, detail.description, tg_id, gh_path, detail.status, author_id],
     )
     comic_id = int(db_exec(db_state, "SELECT id FROM comics WHERE slug = ? LIMIT 1", [slug]).rows[0][0])
-    for raw_genre in detail.genres:
-        g_row = db_exec(db_state, "SELECT id FROM genres WHERE slug = ? LIMIT 1", [normalize_vn_slug(raw_genre)])
-        if g_row.rows:
-            db_exec(db_state, "INSERT OR IGNORE INTO comic_genres (comic_id, genre_id) VALUES (?, ?)", [comic_id, int(g_row.rows[0][0])])
+    sync_comic_genres(db_state, comic_id, detail.genres)
     return comic_id, slug, True
 
 
@@ -611,13 +666,13 @@ def _download_raw_task(
     img_url: str,
     chap_url: str,
     raw_dir: str,
-) -> tuple[int, str | None, str | None]:
+) -> tuple[int, str | None, str, str | None]:
     raw_path = os.path.join(raw_dir, f"raw_{raw_idx:03d}.img")
     try:
         download_image(img_url, raw_path, referer=chap_url)
-        return raw_idx, raw_path, None
+        return raw_idx, raw_path, img_url, None
     except ImageNotFoundError as nf_err:
-        return raw_idx, None, str(nf_err)
+        return raw_idx, None, img_url, str(nf_err)
 
 
 def _process_job(
@@ -674,17 +729,29 @@ def _process_job(
             dl_results = [fut.result() for fut in futures]
 
         dl_results.sort(key=lambda r: r[0])
-        valid_raw_paths: list[str] = []
+        valid_raw_items: list[tuple[str, str]] = []
         skipped_404 = 0
-        for raw_idx, rpath, nf_msg in dl_results:
+        for raw_idx, rpath, rurl, nf_msg in dl_results:
             if rpath is None:
                 skipped_404 += 1
                 print(f"     [Bỏ qua ảnh 404 #{raw_idx + 1}] {nf_msg}")
                 continue
-            valid_raw_paths.append(rpath)
+            valid_raw_items.append((rpath, rurl))
 
-        if not valid_raw_paths:
+        if not valid_raw_items:
             raise RuntimeError(f"Toàn bộ {len(img_urls)} ảnh của chương đều trả về 404 Not Found.")
+
+        branded_paths, removed_wm_logs = apply_chapter_branding(
+            valid_raw_items,
+            work_dir=work_dir,
+            comic_title=comic_title,
+            chapter_num=chap_num,
+            strip_source_wm=STRIP_SOURCE_WATERMARKS,
+            add_own_banners=BRAND_ENABLE_BANNERS,
+        )
+        for wm_msg in removed_wm_logs:
+            print(f"     [Xóa ảnh bản quyền web gốc] {wm_msg}")
+        valid_raw_paths = branded_paths
 
         prepared_pages = pack_and_compress_chapter_images(
             valid_raw_paths,

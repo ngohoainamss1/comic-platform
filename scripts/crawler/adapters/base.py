@@ -26,6 +26,7 @@ class ComicDetail:
     status: str
     genres: list[str]
     chapters: list[ChapterInfo]
+    author: str = ""
 
 
 class BaseSourceAdapter(ABC):
