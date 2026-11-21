@@ -48,3 +48,25 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #f43f5e;
 }
+
+/* VIP Pro Max Animations & Overlays */
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2.5s infinite linear;
+  background: linear-gradient(to right, #161622 4%, #20202e 25%, #161622 36%);
+  background-size: 1000px 100%;
+}
+
+.eye-care-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background-color: rgba(255, 180, 100, 0.08);
+  mix-blend-mode: multiply;
+  transition: opacity 0.5s ease;
+}
