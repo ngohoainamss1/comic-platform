@@ -60,6 +60,8 @@ export interface HistoryItem {
   chapter_id: number;
   chapter_number: number;
   read_at: number;
+  progress?: number; /* Thêm lưu % đọc */
+  total_pages?: number;
 }
 
 export interface FetchComicsParams {
@@ -203,7 +205,7 @@ export async function syncMirrorListToServiceWorker(): Promise<void> {
       }
     }
   } catch {
-    // Giữ nguyên danh sách mirror đã cache trong Service Worker
+    //
   }
 }
 
@@ -323,7 +325,7 @@ export async function recordComicView(comicId: number): Promise<void> {
     }
     sessionStorage.setItem(storageKey, String(Date.now()));
   } catch {
-    // Bỏ qua nếu trình duyệt chặn sessionStorage
+    //
   }
 
   fetch(`${API_BASE}/api/comics/${comicId}/view`, {
