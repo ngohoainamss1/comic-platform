@@ -51,7 +51,7 @@ type AdminTab = 'dashboard' | 'comics' | 'genres' | 'crawler' | 'reports' | 'set
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdated }) => {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getAdminToken()));
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState('123456');
   const [loginErr, setLoginErr] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
 
