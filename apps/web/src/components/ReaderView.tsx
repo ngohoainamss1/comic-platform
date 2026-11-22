@@ -67,12 +67,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   });
   const [gapMode, setGapMode] = useState<boolean>(() => localStorage.getItem('vr_reader_gap') === '1');
 
+  // Auto-scroll state & refs
   const [autoScrollPps, setAutoScrollPps] = useState<number>(0);
   const [autoScrollPaused, setAutoScrollPaused] = useState(false);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number>(0);
   const subPixelRef = useRef<number>(0);
   const pauseResumeTimerRef = useRef<number | null>(null);
+  const isUserTouchingRef = useRef(false);
 
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const verticalContainerRef = useRef<HTMLDivElement | null>(null);
@@ -140,12 +142,20 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     });
   }, [readMode, currentPageIdx, data.pages]);
 
+  // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt, loại bỏ xung đột scroll-behavior: smooth trên mobile
   useEffect(() => {
     if (autoScrollPps <= 0 || autoScrollPaused || readMode !== 'vertical') {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       return;
     }
+
+    const htmlEl = document.documentElement;
+    const bodyEl = document.body;
+    const prevHtmlScroll = htmlEl.style.scrollBehavior;
+    const prevBodyScroll = bodyEl.style.scrollBehavior;
+    htmlEl.style.scrollBehavior = 'auto';
+    bodyEl.style.scrollBehavior = 'auto';
 
     lastFrameRef.current = performance.now();
     subPixelRef.current = 0;
@@ -154,8 +164,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       const dt = Math.min(0.05, (now - lastFrameRef.current) / 1000);
       lastFrameRef.current = now;
 
-      const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
-      if (window.scrollY >= maxScrollY - 2) {
+      if (isUserTouchingRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const docHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      const maxScrollY = docHeight - window.innerHeight;
+      if (maxScrollY > 0 && window.scrollY >= maxScrollY - 2) {
         setAutoScrollPps(0);
         return;
       }
@@ -163,7 +179,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       subPixelRef.current += autoScrollPps * dt;
       const moveY = Math.floor(subPixelRef.current);
       if (moveY >= 1) {
-        window.scrollBy(0, moveY);
+        window.scrollBy({ top: moveY, left: 0, behavior: 'instant' as ScrollBehavior });
         subPixelRef.current -= moveY;
       }
 
@@ -174,24 +190,56 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
+      htmlEl.style.scrollBehavior = prevHtmlScroll;
+      bodyEl.style.scrollBehavior = prevBodyScroll;
     };
   }, [autoScrollPps, autoScrollPaused, readMode]);
 
+  // Xử lý touch/wheel thông minh tránh xung đột khi bấm nút điều khiển
   useEffect(() => {
-    if (autoScrollPps <= 0) return;
-    const handleUserInteract = () => {
-      setAutoScrollPaused(true);
-      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
-      pauseResumeTimerRef.current = window.setTimeout(() => setAutoScrollPaused(false), 1200);
+    if (autoScrollPps <= 0 || readMode !== 'vertical') return;
+
+    const isControlTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return Boolean(target.closest('button, input, a, header, footer, [data-reader-control]'));
     };
-    window.addEventListener('wheel', handleUserInteract, { passive: true });
-    window.addEventListener('touchstart', handleUserInteract, { passive: true });
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (isControlTarget(e.target)) return;
+      isUserTouchingRef.current = true;
+      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
+    };
+
+    const handleTouchEnd = () => {
+      if (!isUserTouchingRef.current) return;
+      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
+      pauseResumeTimerRef.current = window.setTimeout(() => {
+        isUserTouchingRef.current = false;
+      }, 800);
+    };
+
+    const handleWheel = () => {
+      isUserTouchingRef.current = true;
+      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
+      pauseResumeTimerRef.current = window.setTimeout(() => {
+        isUserTouchingRef.current = false;
+      }, 800);
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    window.addEventListener('wheel', handleWheel, { passive: true });
+
     return () => {
-      window.removeEventListener('wheel', handleUserInteract);
-      window.removeEventListener('touchstart', handleUserInteract);
+      isUserTouchingRef.current = false;
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+      window.removeEventListener('wheel', handleWheel);
       if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
     };
-  }, [autoScrollPps]);
+  }, [autoScrollPps, readMode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -203,15 +251,15 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         if (readMode === 'horizontal') setCurrentPageIdx((p) => Math.min(totalPages - 1, p + 1));
         else if (data.next_chapter) onOpenChapter(data.next_chapter.id);
       } else if (e.key === ' ') {
-        if (readMode === 'vertical' && autoScrollPps > 0) {
+        if (readMode === 'vertical') {
           e.preventDefault();
-          setAutoScrollPaused((p) => !p);
+          setAutoScrollPps((p) => (p > 0 ? 0 : 120));
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [readMode, totalPages, data.prev_chapter, data.next_chapter, onOpenChapter, autoScrollPps, reportOpen]);
+  }, [readMode, totalPages, data.prev_chapter, data.next_chapter, onOpenChapter, reportOpen]);
 
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, select')) return;
@@ -469,18 +517,38 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         )}
       </main>
 
+      {/* THANH ĐIỀU KHIỂN NỔI CỰC KỲ DỄ BẤM KHI TỰ CUỘN (FLOATING AUTO-SCROLL CONTROL PILL) */}
+      {autoScrollPps > 0 && readMode === 'vertical' && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#14141d]/95 backdrop-blur-2xl border-2 border-rose-500 px-5 py-3 rounded-full shadow-[0_10px_30px_rgba(244,63,94,0.4)] flex items-center gap-3.5 animate-bounce-short">
+          <span className="text-xs font-black text-rose-400 flex items-center gap-1.5">
+            <ScrollText className="w-4 h-4 animate-spin" /> Đang tự cuộn ({Math.round(autoScrollPps / 60)}x)
+          </span>
+          <button
+            onClick={() => setAutoScrollPps((p) => Math.max(30, p - 30))}
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-extrabold text-sm flex items-center justify-center transition"
+            title="Giảm tốc"
+          >
+            -
+          </button>
+          <button
+            onClick={() => setAutoScrollPps(0)}
+            className="px-5 py-2 rounded-full bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 text-white text-xs font-black shadow-lg shadow-rose-500/50 flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <Pause className="w-4 h-4" /> ⏹ DỪNG NGAY
+          </button>
+          <button
+            onClick={() => setAutoScrollPps((p) => Math.min(450, p + 30))}
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-extrabold text-sm flex items-center justify-center transition"
+            title="Tăng tốc"
+          >
+            +
+          </button>
+        </div>
+      )}
+
       {/* Nút nổi trạng thái nhỏ khi ẩn HUD */}
-      {!hudVisible && totalPages > 0 && (
+      {!hudVisible && totalPages > 0 && autoScrollPps === 0 && (
         <div className="fixed bottom-[calc(1rem+var(--sab))] right-[calc(1rem+var(--sar))] z-40 flex items-center gap-2">
-          {autoScrollPps > 0 && readMode === 'vertical' && (
-            <button
-              onClick={() => setAutoScrollPaused((p) => !p)}
-              className="bg-rose-500/90 backdrop-blur-xl px-3 py-1.5 rounded-full text-[11px] font-bold text-white shadow-lg flex items-center gap-1 min-h-[38px]"
-            >
-              {autoScrollPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-              {Math.round(autoScrollPps / 60)}x
-            </button>
-          )}
           <div className="bg-black/70 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-full text-[11px] font-black text-white shadow-lg">
             {currentPageIdx + 1} / {totalPages}
           </div>
@@ -492,45 +560,57 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.75rem+var(--sab))] px-safe pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
           <div className="max-w-3xl mx-auto space-y-2.5 px-3 sm:px-5">
             {readMode === 'vertical' ? (
-              <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
+              <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
                 <button
                   onClick={() => {
-                    if (autoScrollPps === 0) {
-                      setAutoScrollPps(180);
-                      setAutoScrollPaused(false);
+                    if (autoScrollPps > 0) {
+                      setAutoScrollPps(0);
                     } else {
-                      setAutoScrollPaused((p) => !p);
+                      setAutoScrollPps(120);
                     }
                   }}
-                  className={`p-2 rounded-lg transition min-w-[36px] min-h-[36px] flex items-center justify-center ${
-                    autoScrollPps > 0 && !autoScrollPaused
-                      ? 'bg-rose-500 text-white'
-                      : 'bg-white/10 text-zinc-300 hover:text-white'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1 transition min-h-[36px] ${
+                    autoScrollPps > 0
+                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30 animate-pulse'
+                      : 'bg-white/10 text-zinc-200 hover:bg-white/15'
                   }`}
-                  title="Bật/Tạm dừng tự cuộn"
                 >
-                  {autoScrollPps > 0 && !autoScrollPaused ? (
-                    <Pause className="w-3.5 h-3.5" />
+                  {autoScrollPps > 0 ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5" /> Dừng
+                    </>
                   ) : (
-                    <Play className="w-3.5 h-3.5" />
+                    <>
+                      <Play className="w-3.5 h-3.5" /> Tự cuộn
+                    </>
                   )}
                 </button>
-                <span className="text-[11px] font-semibold text-zinc-400 shrink-0">Tự cuộn</span>
+
                 <input
                   type="range"
-                  min={0}
-                  max={720}
+                  min={30}
+                  max={450}
                   step={30}
-                  value={autoScrollPps}
-                  onChange={(e) => {
-                    setAutoScrollPps(Number(e.target.value));
-                    setAutoScrollPaused(false);
-                  }}
+                  value={autoScrollPps || 120}
+                  onChange={(e) => setAutoScrollPps(Number(e.target.value))}
                   className="flex-1 accent-rose-500 h-2 py-2"
                 />
-                <span className="text-[11px] font-extrabold text-rose-400 w-14 text-right shrink-0">
-                  {autoScrollPps > 0 ? `${(autoScrollPps / 60).toFixed(1)}x` : 'Tắt'}
-                </span>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {[60, 120, 240, 360].map((spd) => (
+                    <button
+                      key={spd}
+                      onClick={() => setAutoScrollPps(spd)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                        autoScrollPps === spd
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-white/5 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {Math.round(spd / 60)}x
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
