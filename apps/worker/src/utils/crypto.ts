@@ -104,3 +104,100 @@ export async function verifyAdminToken(token: string, secret: string): Promise<b
     return false;
   }
 }
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+  return `${bufferToHex(salt.buffer)}:${bufferToHex(derivedBits)}`;
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  try {
+    const [saltHex, hashHex] = stored.split(':');
+    if (!saltHex || !hashHex) return false;
+    const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+    const computedHex = bufferToHex(derivedBits);
+    return timingSafeEqual(computedHex, hashHex);
+  } catch {
+    return false;
+  }
+}
+
+export async function signUserToken(
+  user: { id: number; username: string; role: string },
+  secret: string,
+  ttlSeconds = 86400 * 30
+): Promise<string> {
+  const payload = JSON.stringify({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + ttlSeconds,
+  });
+  const encoded = toBase64Url(payload);
+  const sig = await computeHmacHex(`user:${encoded}`, secret);
+  return `${encoded}.${sig}`;
+}
+
+export async function verifyUserToken(
+  token: string,
+  secret: string
+): Promise<{ id: number; username: string; role: string } | null> {
+  if (!token || !secret) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [encoded, sig] = parts;
+  const expectedSig = await computeHmacHex(`user:${encoded}`, secret);
+  if (!timingSafeEqual(expectedSig, sig)) return null;
+  try {
+    const parsed = JSON.parse(fromBase64Url(encoded)) as {
+      id?: number;
+      username?: string;
+      role?: string;
+      exp?: number;
+    };
+    if (!parsed.id || !parsed.username) return null;
+    if (!parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null;
+    return {
+      id: Number(parsed.id),
+      username: String(parsed.username),
+      role: String(parsed.role || 'user'),
+    };
+  } catch {
+    return null;
+  }
+}

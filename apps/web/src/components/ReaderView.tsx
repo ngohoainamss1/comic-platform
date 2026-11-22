@@ -13,15 +13,19 @@ import {
 } from 'lucide-react';
 import {
   type ChapterPagesPayload,
+  type UserProfile,
   resolveAssetUrl,
   submitReport,
 } from '../lib/api';
+import { CommentSection } from './CommentSection';
 
 interface ReaderViewProps {
   data: ChapterPagesPayload;
   onBack: () => void;
   onOpenChapter: (chapterId: number) => void;
   onProgress?: (pageIndex: number, totalPages: number) => void;
+  currentUser: UserProfile | null;
+  onRequireAuth: () => void;
 }
 
 type ReadTheme = 'oled' | 'dim' | 'warm';
@@ -37,10 +41,11 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onBack,
   onOpenChapter,
   onProgress,
+  currentUser,
+  onRequireAuth,
 }) => {
   const totalPages = data.pages.length;
 
-  // Nhận diện tự động Webtoon (ảnh dài) so với Manga
   const isWebtoonStrip = React.useMemo(() => {
     if (totalPages === 0) return true;
     const tallCount = data.pages.filter((p) => p.width > 0 && p.height / p.width >= 1.8).length;
@@ -52,7 +57,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   const [hudVisible, setHudVisible] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Tùy chỉnh giao diện đọc
   const [maxWidthPct, setMaxWidthPct] = useState<number>(() => {
     const saved = Number(localStorage.getItem('vr_reader_width') || '100');
     return Number.isFinite(saved) && saved >= 60 && saved <= 100 ? saved : 100;
@@ -63,7 +67,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   });
   const [gapMode, setGapMode] = useState<boolean>(() => localStorage.getItem('vr_reader_gap') === '1');
 
-  // Auto-scroll mượt 60-120fps bằng requestAnimationFrame (pixel / giây)
   const [autoScrollPps, setAutoScrollPps] = useState<number>(0);
   const [autoScrollPaused, setAutoScrollPaused] = useState(false);
   const rafRef = useRef<number | null>(null);
@@ -71,18 +74,15 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   const subPixelRef = useRef<number>(0);
   const pauseResumeTimerRef = useRef<number | null>(null);
 
-  // Chế độ lật trang thông minh cho ảnh dài
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const verticalContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Báo lỗi chương
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState('Ảnh bị lỗi / không tải được');
   const [reportDetail, setReportDetail] = useState('');
   const [reportMsg, setReportMsg] = useState('');
   const [reportSending, setReportSending] = useState(false);
 
-  // Reset khi đổi chương
   useEffect(() => {
     setCurrentPageIdx(0);
     setAutoScrollPps(0);
@@ -90,14 +90,12 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [data.chapter.id]);
 
-  // Lưu cài đặt đọc
   useEffect(() => {
     localStorage.setItem('vr_reader_width', String(maxWidthPct));
     localStorage.setItem('vr_reader_theme', theme);
     localStorage.setItem('vr_reader_gap', gapMode ? '1' : '0');
   }, [maxWidthPct, theme, gapMode]);
 
-  // Theo dõi trang hiện tại khi cuộn dọc
   useEffect(() => {
     if (readMode !== 'vertical' || !verticalContainerRef.current) return;
     const nodes = verticalContainerRef.current.querySelectorAll<HTMLElement>('[data-page-idx]');
@@ -122,7 +120,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     return () => obs.disconnect();
   }, [data.chapter.id, readMode, totalPages, onProgress]);
 
-  // Cập nhật tiến độ ở chế độ lật trang + cuộn lên đầu khung trang mới
   useEffect(() => {
     if (readMode === 'horizontal') {
       onProgress?.(currentPageIdx, totalPages);
@@ -132,7 +129,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     }
   }, [currentPageIdx, readMode, totalPages, onProgress]);
 
-  // Preload 2 trang tiếp theo ở chế độ lật trang
   useEffect(() => {
     if (readMode !== 'horizontal') return;
     [currentPageIdx + 1, currentPageIdx + 2].forEach((idx) => {
@@ -144,7 +140,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     });
   }, [readMode, currentPageIdx, data.pages]);
 
-  // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt
   useEffect(() => {
     if (autoScrollPps <= 0 || autoScrollPaused || readMode !== 'vertical') {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -182,7 +177,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     };
   }, [autoScrollPps, autoScrollPaused, readMode]);
 
-  // Tự tạm dừng auto-scroll khi người dùng chạm tay hoặc lăn chuột
   useEffect(() => {
     if (autoScrollPps <= 0) return;
     const handleUserInteract = () => {
@@ -199,7 +193,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     };
   }, [autoScrollPps]);
 
-  // Điều hướng bàn phím
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (reportOpen) return;
@@ -220,7 +213,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [readMode, totalPages, data.prev_chapter, data.next_chapter, onOpenChapter, autoScrollPps, reportOpen]);
 
-  // Xử lý chạm màn hình
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, select')) return;
     const w = window.innerWidth;
@@ -311,7 +303,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         </header>
       )}
 
-      {/* Bảng cài đặt nhanh (Settings Drawer / Bottom Sheet trên mobile) */}
+      {/* Bảng cài đặt nhanh */}
       {settingsOpen && hudVisible && (
         <div className="fixed inset-x-0 bottom-0 sm:inset-auto sm:top-14 sm:right-6 z-50 w-full sm:w-80 rounded-t-3xl sm:rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/10 p-5 sm:p-4 shadow-2xl space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-4 max-h-[85dvh] overflow-y-auto">
           <div className="flex items-center justify-between">
@@ -421,9 +413,18 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Khu vực Bình luận dưới Chapter */}
+            <div className="w-full max-w-3xl px-4 pt-4 pb-12">
+              <CommentSection
+                comicId={data.chapter.comic_id}
+                chapterId={data.chapter.id}
+                currentUser={currentUser}
+                onRequireAuth={onRequireAuth}
+              />
+            </div>
           </div>
         ) : (
-          /* Chế độ Lật trang thông minh */
           <div className="w-full max-w-4xl flex flex-col items-center px-2">
             {isWebtoonStrip && (
               <div className="mb-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-200 flex items-center gap-2">
@@ -454,6 +455,16 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 />
               )}
             </div>
+
+            {/* Bình luận dưới Chapter cho chế độ lật trang */}
+            <div className="w-full max-w-3xl px-4 pt-8 pb-12">
+              <CommentSection
+                comicId={data.chapter.comic_id}
+                chapterId={data.chapter.id}
+                currentUser={currentUser}
+                onRequireAuth={onRequireAuth}
+              />
+            </div>
           </div>
         )}
       </main>
@@ -480,7 +491,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       {hudVisible && (
         <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.75rem+var(--sab))] px-safe pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
           <div className="max-w-3xl mx-auto space-y-2.5 px-3 sm:px-5">
-            {/* Thanh điều khiển tự cuộn mượt */}
             {readMode === 'vertical' ? (
               <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
                 <button
@@ -539,7 +549,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               </div>
             )}
 
-            {/* Hàng nút điều hướng chính */}
             <div className="flex items-center justify-between gap-2">
               <button
                 disabled={!data.prev_chapter}

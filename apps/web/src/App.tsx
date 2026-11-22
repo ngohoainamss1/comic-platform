@@ -34,6 +34,7 @@ import {
   fetchChapterPages,
   fetchComicDetail,
   fetchComics,
+  fetchCurrentUser,
   fetchGenres,
   fetchPublicSettings,
   type GenreItem,
@@ -47,8 +48,11 @@ import {
   rateComic,
   resolveAssetUrl,
   saveHistory,
+  setUserToken,
   toggleBookmark,
+  type UserProfile,
 } from './lib/api';
+import { getAvatarUrl } from './lib/memes';
 import {
   parseRouteFromLocation,
   pushRoute,
@@ -59,6 +63,7 @@ import {
 } from './lib/router';
 import { ReaderView } from './components/ReaderView';
 import { AdminPanel } from './components/AdminPanel';
+import { AuthModal } from './components/AuthModal';
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -80,6 +85,9 @@ export function App() {
   const initRoute = useMemo(() => parseRouteFromLocation(), []);
   const [view, setView] = useState<ViewMode>(initRoute.view);
   const [libraryTab, setLibraryTab] = useState<'bookmarks' | 'history'>(initRoute.libraryTab || 'bookmarks');
+
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const [publicSettings, setPublicSettings] = useState<PublicSettings>({
     site_name: 'VinaReader',
@@ -155,6 +163,7 @@ export function App() {
   useEffect(() => {
     loadSettings();
     fetchGenres().then(setGenres).catch(() => {});
+    fetchCurrentUser().then(setCurrentUser).catch(() => {});
   }, [loadSettings]);
 
   // Initial deep link hydration
@@ -380,6 +389,8 @@ export function App() {
         }}
         onOpenChapter={(id) => openChapter(id, { replace: true })}
         onProgress={handleReaderProgress}
+        currentUser={currentUser}
+        onRequireAuth={() => setAuthModalOpen(true)}
       />
     );
   }
@@ -387,7 +398,7 @@ export function App() {
   const activeHero = heroComics[heroIdx];
 
   return (
-    <div className="min-h-screen bg-[#07070b] text-zinc-100 pb-24 md:pb-12 selection:bg-rose-500/30">
+    <div className="min-h-dvh text-zinc-100 pb-[calc(5rem+var(--sab))] md:pb-12 selection:bg-rose-500/30">
       {/* Thanh thông báo toàn trang từ Admin */}
       {publicSettings.announcement_enabled === '1' &&
         publicSettings.announcement_text &&
@@ -412,7 +423,7 @@ export function App() {
       )}
 
       {/* Header Glassmorphism */}
-      <header className="sticky top-0 z-40 bg-[#09090f]/80 backdrop-blur-2xl border-b border-white/[0.07]">
+      <header className="sticky top-0 z-40 bg-[#09090f]/80 backdrop-blur-2xl border-b border-white/[0.07] pt-safe px-safe">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
           <button
             onClick={() => {
@@ -483,17 +494,47 @@ export function App() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Tìm truyện..."
-              className="w-full pl-9 pr-3 py-2 rounded-2xl bg-white/[0.06] border border-white/10 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-rose-500/60 focus:bg-white/[0.09] transition"
+              className="w-full pl-9 pr-3 py-2 rounded-2xl bg-white/[0.06] border border-white/10 text-xs sm:text-xs text-white placeholder:text-zinc-500 outline-none focus:border-rose-500/60 focus:bg-white/[0.09] transition"
             />
           </form>
 
-          <button
-            onClick={() => navigateTo({ view: 'admin' })}
-            title="Quản trị hệ thống"
-            className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition shrink-0"
-          >
-            <Shield className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <img
+                  src={getAvatarUrl(currentUser.avatar_seed, currentUser.username)}
+                  alt={currentUser.display_name}
+                  className="w-8 h-8 rounded-xl bg-zinc-900 border border-white/15 p-0.5"
+                />
+                <span className="hidden sm:inline text-xs font-bold text-zinc-200">{currentUser.display_name}</span>
+                <button
+                  onClick={() => {
+                    setUserToken('');
+                    setCurrentUser(null);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-xs font-bold text-zinc-400 hover:text-rose-300 transition"
+                  title="Đăng xuất"
+                >
+                  Đăng xuất
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-xs font-bold text-white shadow-md shadow-rose-500/20 hover:brightness-110 transition"
+              >
+                Đăng nhập
+              </button>
+            )}
+
+            <button
+              onClick={() => navigateTo({ view: 'admin' })}
+              title="Quản trị hệ thống"
+              className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
+            >
+              <Shield className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1159,7 +1200,7 @@ export function App() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0a0a10]/95 backdrop-blur-2xl border-t border-white/10 px-2 py-2 flex items-center justify-around">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0a0a10]/95 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.5rem+var(--sab))] px-safe pt-2 flex items-center justify-around">
         {[
           { id: 'home', label: 'Trang chủ', icon: <Home className="w-5 h-5" /> },
           { id: 'browse', label: 'Khám phá', icon: <Compass className="w-5 h-5" /> },
@@ -1178,7 +1219,7 @@ export function App() {
                 libraryTab: item.id === 'library' ? libraryTab : undefined,
               });
             }}
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-bold transition ${
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-bold transition min-h-[44px] justify-center ${
               view === item.id ? 'text-rose-400' : 'text-zinc-500'
             }`}
           >
@@ -1188,10 +1229,10 @@ export function App() {
         ))}
       </nav>
 
-      {/* Modal Lọc Thể Loại (Include / Exclude 3 trạng thái) */}
+      {/* Modal Lọc Thể Loại */}
       {showFilterModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-5 max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-black text-base text-white">Lọc theo Thể loại</h3>
@@ -1208,7 +1249,7 @@ export function App() {
                     setShowFilterModal(false);
                   }
                 }}
-                className="text-zinc-400 hover:text-white"
+                className="text-zinc-400 hover:text-white p-2"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1222,7 +1263,7 @@ export function App() {
                   <button
                     key={g.id}
                     onClick={() => cycleGenreState(g.slug)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition min-h-[38px] flex items-center ${
                       isInc
                         ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                         : isExc
@@ -1258,7 +1299,7 @@ export function App() {
                   replaceRoute({ view: 'browse', q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
                   setView('browse');
                 }}
-                className="px-5 py-2 rounded-xl bg-rose-500 text-xs font-bold text-white"
+                className="px-5 py-2.5 rounded-xl bg-rose-500 text-xs font-bold text-white min-h-[40px]"
               >
                 Áp dụng
               </button>
@@ -1269,8 +1310,8 @@ export function App() {
 
       {/* Modal Sao lưu / Khôi phục tủ truyện */}
       {backupModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-5 max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-base text-white">Sao lưu & Khôi phục Tủ truyện</h3>
               <button
@@ -1281,7 +1322,7 @@ export function App() {
                     setBackupModalOpen(false);
                   }
                 }}
-                className="text-zinc-400 hover:text-white"
+                className="text-zinc-400 hover:text-white p-2"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1301,7 +1342,7 @@ export function App() {
                   URL.revokeObjectURL(url);
                   setBackupMsg('Đã tải file sao lưu JSON và sao chép vào bộ nhớ tạm!');
                 }}
-                className="w-full py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-xs font-bold flex items-center justify-center gap-1.5"
+                className="w-full py-3 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-xs font-bold flex items-center justify-center gap-1.5 min-h-[44px]"
               >
                 <Download className="w-4 h-4" /> Xuất file sao lưu (JSON)
               </button>
@@ -1327,7 +1368,7 @@ export function App() {
                     setBackupMsg((err as Error).message);
                   }
                 }}
-                className="w-full py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                className="w-full py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 min-h-[44px]"
               >
                 <Upload className="w-4 h-4" /> Nhập dữ liệu khôi phục
               </button>
@@ -1337,6 +1378,13 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Auth Modal (Login / Register) */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={(u) => setCurrentUser(u)}
+      />
     </div>
   );
 }

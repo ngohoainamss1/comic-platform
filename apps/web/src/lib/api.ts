@@ -479,3 +479,163 @@ export const adminApi = {
   updateSettings: (payload: Partial<PublicSettings>) =>
     adminReq<{ message: string }>('/settings', { method: 'PUT', body: JSON.stringify(payload) }),
 };
+
+export const USER_TOKEN_KEY = 'vr_user_token';
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  display_name: string;
+  avatar_seed: string;
+  role: string;
+}
+
+export interface CommentReply {
+  id: number;
+  comic_id: number;
+  chapter_id: number | null;
+  user_id: number;
+  parent_id: number;
+  reply_to_name: string | null;
+  content: string;
+  meme_url: string | null;
+  likes_count: number;
+  is_deleted: number;
+  created_at: string;
+  liked_by_me: boolean;
+  user: {
+    username: string;
+    display_name: string;
+    avatar_seed: string;
+    role: string;
+  };
+}
+
+export interface CommentItem {
+  id: number;
+  comic_id: number;
+  chapter_id: number | null;
+  user_id: number;
+  parent_id: null;
+  reply_to_name: null;
+  content: string;
+  meme_url: string | null;
+  likes_count: number;
+  is_deleted: number;
+  created_at: string;
+  reply_count: number;
+  liked_by_me: boolean;
+  user: {
+    username: string;
+    display_name: string;
+    avatar_seed: string;
+    role: string;
+  };
+  replies: CommentReply[];
+}
+
+export function getUserToken(): string {
+  return localStorage.getItem(USER_TOKEN_KEY) || '';
+}
+
+export function setUserToken(token: string): void {
+  if (token) localStorage.setItem(USER_TOKEN_KEY, token);
+  else localStorage.removeItem(USER_TOKEN_KEY);
+}
+
+export async function loginUser(payload: { username: string; password: string }): Promise<{ token: string; user: UserProfile }> {
+  const res = await requestJson<{ token: string; user: UserProfile }>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  setUserToken(res.token);
+  return res;
+}
+
+export async function registerUser(payload: {
+  username: string;
+  password: string;
+  display_name: string;
+  avatar_seed: string;
+}): Promise<{ token: string; user: UserProfile }> {
+  const res = await requestJson<{ token: string; user: UserProfile }>('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  setUserToken(res.token);
+  return res;
+}
+
+export async function fetchCurrentUser(): Promise<UserProfile | null> {
+  const token = getUserToken();
+  if (!token) return null;
+  try {
+    const res = await requestJson<{ user: UserProfile }>('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.user;
+  } catch {
+    setUserToken('');
+    return null;
+  }
+}
+
+export async function updateUserProfile(payload: { display_name?: string; avatar_seed?: string }): Promise<UserProfile> {
+  const token = getUserToken();
+  const res = await requestJson<{ user: UserProfile }>('/api/auth/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.user;
+}
+
+export async function fetchComments(comicId: number, chapterId?: number | null): Promise<CommentItem[]> {
+  const token = getUserToken();
+  const sp = new URLSearchParams();
+  sp.set('comic_id', String(comicId));
+  if (chapterId !== undefined && chapterId !== null) {
+    sp.set('chapter_id', String(chapterId));
+  }
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await requestJson<{ data: CommentItem[] }>(`/api/comments?${sp.toString()}`, { headers });
+  return res.data || [];
+}
+
+export async function postComment(payload: {
+  comic_id: number;
+  chapter_id?: number | null;
+  parent_id?: number | null;
+  reply_to_name?: string | null;
+  content?: string;
+  meme_url?: string | null;
+}): Promise<CommentItem> {
+  const token = getUserToken();
+  const res = await requestJson<{ data: CommentItem }>('/api/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function toggleLikeComment(commentId: number): Promise<{ liked: boolean; likes_count: number }> {
+  const token = getUserToken();
+  const res = await requestJson<{ liked: boolean; likes_count: number }>(`/api/comments/${commentId}/like`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res;
+}
+
+export async function deleteComment(commentId: number): Promise<void> {
+  const token = getUserToken();
+  await requestJson(`/api/comments/${commentId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

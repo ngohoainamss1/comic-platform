@@ -147,3 +147,41 @@ INSERT OR IGNORE INTO site_settings (key, value) VALUES
 ('announcement_enabled', '0'),
 ('announcement_text', ''),
 ('maintenance_mode', '0');
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    avatar_seed TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comic_id INTEGER NOT NULL,
+    chapter_id INTEGER DEFAULT NULL,
+    user_id INTEGER NOT NULL,
+    parent_id INTEGER DEFAULT NULL,
+    reply_to_name TEXT DEFAULT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    meme_url TEXT DEFAULT NULL,
+    likes_count INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS comment_likes (
+    comment_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (comment_id, user_id),
+    FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(comic_id, chapter_id, parent_id, created_at DESC);

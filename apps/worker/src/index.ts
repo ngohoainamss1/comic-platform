@@ -5,6 +5,8 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { apiRoutes } from './routes/api';
 import { adminRoutes } from './routes/admin';
 import { imageProxyRoutes } from './routes/imageProxy';
+import { authRoutes } from './routes/auth';
+import { commentsRoutes } from './routes/comments';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -22,6 +24,8 @@ app.get('/health', (c) => c.json({ status: 'ok', service: 'comic-edge-worker', t
 
 app.use('/api/*', rateLimitMiddleware);
 app.route('/api/admin', adminRoutes);
+app.route('/api/auth', authRoutes);
+app.route('/api/comments', commentsRoutes);
 app.route('/api', apiRoutes);
 app.route('/img', imageProxyRoutes);
 
