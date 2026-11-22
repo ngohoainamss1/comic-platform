@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://comic-worker.namdzsv08.workers.dev').replace(/\/$/, '');
 const MIRROR_GIST_URL = (import.meta.env.VITE_MIRROR_GIST_URL || '').trim();
 
 export interface GenreItem {
