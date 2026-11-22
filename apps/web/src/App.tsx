@@ -115,6 +115,7 @@ export function App() {
 
   // Navigation & Drawer states
   const [genreDropdownOpen, setGenreDropdownOpen] = useState(false);
+  const [genreSearchQuery, setGenreSearchQuery] = useState('');
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
 
@@ -823,43 +824,88 @@ export function App() {
           {/* Đường kẻ đáy Header */}
           <div className="bg-bd-strong h-[1px] w-full lg:bg-white/10" />
 
-          {/* Mega Dropdown Thể loại */}
+          {/* Mega Dropdown Thể loại (Chuẩn VinaHentai) */}
           {genreDropdownOpen && (
             <div className="border-b border-bd-strong bg-bgc-layer1/98 backdrop-blur-xl shadow-2xl">
-              <div className="container-page mx-auto px-4 py-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-txt-focus">
-                    Danh sách thể loại ({genres.length})
-                  </span>
+              <div className="container-page mx-auto px-4 py-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="w-4 h-4 text-txt-secondary absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={genreSearchQuery}
+                      onChange={(e) => setGenreSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thể loại..."
+                      className="w-full pl-10 pr-4 py-2 rounded-full bg-bgc-layer2 border border-bd-default text-xs sm:text-sm text-txt-primary placeholder:text-txt-secondary outline-none focus:border-lav-500"
+                    />
+                  </div>
                   <button
                     onClick={() => setGenreDropdownOpen(false)}
-                    className="text-xs text-txt-secondary hover:text-white flex items-center gap-1"
+                    className="text-xs text-txt-secondary hover:text-white p-2 rounded-lg bg-bgc-layer2"
                   >
-                    <X className="w-3.5 h-3.5" /> Đóng
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5 max-h-64 overflow-y-auto">
-                  {genres.map((g) => {
-                    const active = incGenres.includes(g.slug);
+
+                {/* Grouped by Alphabet */}
+                <div className="space-y-4">
+                  {['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'].map((letter) => {
+                    const matchedGenres = genres.filter((g) => {
+                      const nameLower = g.name.toLowerCase();
+                      const query = genreSearchQuery.trim().toLowerCase();
+                      if (query && !nameLower.includes(query)) return false;
+
+                      const first = g.name.charAt(0).toUpperCase();
+                      if (letter === '#') return !/[A-Z]/.test(first);
+                      return first === letter;
+                    });
+                    if (matchedGenres.length === 0) return null;
+
                     return (
-                      <button
-                        key={g.id}
-                        onClick={() => {
-                          setIncGenres([g.slug]);
-                          setExcGenres([]);
-                          setPage(1);
-                          navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg text-left text-xs font-medium truncate border transition ${
-                          active
-                            ? 'border-lav-500 bg-lav-500/20 text-txt-focus'
-                            : 'border-transparent hover:border-bd-default hover:bg-bgc-layer2 text-txt-secondary hover:text-txt-primary'
-                        }`}
-                      >
-                        {g.name}
-                      </button>
+                      <div key={letter} className="space-y-2">
+                        <div className="text-lav-400 font-extrabold text-sm border-b border-bd-default pb-1">
+                          {letter}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                          {matchedGenres.map((g) => {
+                            const active = incGenres.includes(g.slug);
+                            return (
+                              <button
+                                key={g.id}
+                                onClick={() => {
+                                  setIncGenres([g.slug]);
+                                  setExcGenres([]);
+                                  setPage(1);
+                                  setGenreDropdownOpen(false);
+                                  navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
+                                }}
+                                className={`px-3 py-2 rounded-lg text-left text-xs sm:text-sm font-medium truncate transition ${
+                                  active
+                                    ? 'bg-lav-500 text-white font-bold'
+                                    : 'hover:bg-bgc-layer2 text-txt-primary'
+                                }`}
+                              >
+                                {g.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
                   })}
+                </div>
+
+                <div className="border-t border-bd-default pt-3 text-right">
+                  <button
+                    onClick={() => {
+                      setGenreDropdownOpen(false);
+                      pushModalState('filter');
+                      setShowFilterModal(true);
+                    }}
+                    className="text-xs font-semibold text-mag-400 hover:text-mag-500 underline"
+                  >
+                    Trang thể loại chi tiết ↗
+                  </button>
                 </div>
               </div>
             </div>
