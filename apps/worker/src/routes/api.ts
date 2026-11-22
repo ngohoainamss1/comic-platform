@@ -36,6 +36,7 @@ apiRoutes.get('/genres', async (c) => {
   try {
     const db = getDb(c.env);
     const result = await db.execute('SELECT id, slug, name FROM genres ORDER BY name ASC');
+    c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({ success: true, data: result.rows });
   } catch {
     return c.json({ success: false, message: 'Không thể tải danh sách thể loại.' }, 500);
@@ -146,6 +147,7 @@ apiRoutes.get('/comics', async (c) => {
       })
     );
 
+    c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({
       success: true,
       data: items,
@@ -234,6 +236,7 @@ apiRoutes.get('/comics/:slug', async (c) => {
       }
     }
 
+    c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({
       success: true,
       data: {
@@ -302,6 +305,7 @@ apiRoutes.get('/chapters/:id/pages', async (c) => {
     const prevChapter = currentIdx > 0 ? allChapters[currentIdx - 1] : null;
     const nextChapter = currentIdx >= 0 && currentIdx < allChapters.length - 1 ? allChapters[currentIdx + 1] : null;
 
+    c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({
       success: true,
       data: { chapter: chapterRes.rows[0], prev_chapter: prevChapter, next_chapter: nextChapter, pages },

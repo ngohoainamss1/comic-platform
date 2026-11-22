@@ -127,16 +127,16 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     }
   }, [currentPageIdx, readMode, totalPages, onProgress]);
 
+  // Preload 3 trang tiếp theo ở mọi chế độ đọc
   useEffect(() => {
-    if (readMode !== 'horizontal') return;
-    [currentPageIdx + 1, currentPageIdx + 2].forEach((idx) => {
+    [currentPageIdx + 1, currentPageIdx + 2, currentPageIdx + 3].forEach((idx) => {
       const p = data.pages[idx];
       if (p?.url) {
         const img = new Image();
         img.src = resolveAssetUrl(p.url);
       }
     });
-  }, [readMode, currentPageIdx, data.pages]);
+  }, [currentPageIdx, data.pages]);
 
   // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt, loại bỏ xung đột scroll-behavior: smooth trên mobile
   useEffect(() => {
