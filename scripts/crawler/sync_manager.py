@@ -25,6 +25,7 @@ except ImportError:
 
 from scripts.pipeline.slicer import pack_and_compress_chapter_images
 from scripts.pipeline.branding import apply_chapter_branding
+from scripts.pipeline.watermark_cleaner import clean_chapter_images
 from scripts.pipeline.compressor import compress_to_avif
 from scripts.pipeline.uploader import (
     upload_to_telegram,
@@ -59,6 +60,7 @@ SLICE_TARGET_HEIGHT = int(os.getenv("SLICE_TARGET_HEIGHT", "3600"))
 SLICE_MAX_HEIGHT = int(os.getenv("SLICE_MAX_HEIGHT", "4200"))
 STRIP_SOURCE_WATERMARKS = os.getenv("STRIP_SOURCE_WATERMARKS", "1").strip() != "0"
 BRAND_ENABLE_BANNERS = os.getenv("BRAND_ENABLE_BANNERS", "1").strip() != "0"
+CLEAN_INPAGE_WATERMARKS = os.getenv("CLEAN_INPAGE_WATERMARKS", "1").strip() != "0"
 
 _DB_LOCK = threading.Lock()
 _TG_LOCK = threading.Lock()
@@ -783,6 +785,11 @@ def _process_job(
 
         if not valid_raw_items:
             raise RuntimeError(f"Toàn bộ {len(img_urls)} ảnh của chương đều trả về 404 Not Found.")
+
+        if CLEAN_INPAGE_WATERMARKS:
+            inpage_wm_logs = clean_chapter_images(valid_raw_items, chapter_url=chap_url)
+            if inpage_wm_logs:
+                print(f"     [Làm sạch watermark trong trang] {len(inpage_wm_logs)} trang ({', '.join(inpage_wm_logs[:5])})")
 
         branded_paths, removed_wm_logs = apply_chapter_branding(
             valid_raw_items,

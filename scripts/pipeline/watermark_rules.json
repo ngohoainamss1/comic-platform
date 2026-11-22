@@ -1,0 +1,13 @@
+{
+  "default": {
+    "match_threshold": 0.78,
+    "flat_std_threshold": 18.0,
+    "crop_top": 0,
+    "crop_bottom": 0
+  },
+  "domains": {
+    "vi-du-nguon-co-banner-duoi.com": {
+      "crop_bottom": 45
+    }
+  }
+}

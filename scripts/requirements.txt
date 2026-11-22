@@ -10,3 +10,4 @@ python-slugify==8.0.4
 
 curl-cffi
 Pillow>=10.0.0
+opencv-python-headless>=4.10.0
