@@ -1733,30 +1733,6 @@ export function App() {
                   </div>
                 </div>
 
-                {/* BÌNH LUẬN */}
-                <div className="mt-8 space-y-4">
-                  <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
-                    BÌNH LUẬN
-                  </h2>
-                  {!currentUser && (
-                    <div className="rounded-md border border-bd-default bg-bgc-layer1 py-5 text-center text-sm text-txt-secondary">
-                      Vui lòng{' '}
-                      <button
-                        onClick={() => setAuthModalOpen(true)}
-                        className="text-mag-400 hover:text-mag-500 font-semibold underline"
-                      >
-                        Đăng nhập
-                      </button>{' '}
-                      để bình luận
-                    </div>
-                  )}
-                  <CommentSection
-                    comicId={selectedComic.id}
-                    currentUser={currentUser}
-                    onRequireAuth={() => setAuthModalOpen(true)}
-                  />
-                </div>
-
                 {/* CÙNG TÁC GIẢ */}
                 {selectedComic.same_author_comics && selectedComic.same_author_comics.length > 0 && (
                   <div className="mt-8 space-y-4">
@@ -1787,6 +1763,30 @@ export function App() {
                     </div>
                   </div>
                 )}
+
+                {/* BÌNH LUẬN */}
+                <div className="mt-8 space-y-4">
+                  <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
+                    BÌNH LUẬN
+                  </h2>
+                  {!currentUser && (
+                    <div className="rounded-md border border-bd-default bg-bgc-layer1 py-5 text-center text-sm text-txt-secondary">
+                      Vui lòng{' '}
+                      <button
+                        onClick={() => setAuthModalOpen(true)}
+                        className="text-mag-400 hover:text-mag-500 font-semibold underline"
+                      >
+                        Đăng nhập
+                      </button>{' '}
+                      để bình luận
+                    </div>
+                  )}
+                  <CommentSection
+                    comicId={selectedComic.id}
+                    currentUser={currentUser}
+                    onRequireAuth={() => setAuthModalOpen(true)}
+                  />
+                </div>
               </>
             )}
           </section>
