@@ -421,12 +421,44 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 "Nguồn chặn IP nước ngoài của GitHub Actions hoặc yêu cầu Cookie đăng nhập (CRAWLER_COOKIE)."
             )
 
-        imgs: list[str] = []
         skip_keywords = (
             "logo", "loading", "loader", "spinner", "icon",
             "ads", "advert", "donate", "credit", "avatar", "facebook",
             "zalo", "telegram", "discord", "qr", "placeholder", "1x1", "blank"
         )
+
+        def _is_valid(url_str: str) -> bool:
+            low = url_str.lower()
+            if not low or low.startswith("data:") or low.startswith("blob:"):
+                return False
+            if any(k in low for k in skip_keywords):
+                return False
+            if low.endswith(".svg") or low.endswith(".gif"):
+                return False
+            return True
+
+        def _natural_sort_key(url: str):
+            m = re.search(r'/(\d+)-[^\/]+\.(?:jpg|jpeg|png|webp|avif)', url, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+            return 999999
+
+        script_imgs: list[str] = []
+        for script in soup.find_all("script"):
+            script_text = str(script)
+            if script_text:
+                matches = re.findall(r'https?://[^\s\"<>]+?\.(?:jpg|jpeg|png|webp|avif)', script_text, re.IGNORECASE)
+                for raw_u in matches:
+                    if _is_valid(raw_u):
+                        normalized = self._normalize_url(raw_u, chapter_url)
+                        if normalized not in script_imgs and "/manga-images/" in normalized:
+                            script_imgs.append(normalized)
+
+        if len(script_imgs) > 3:
+            script_imgs.sort(key=_natural_sort_key)
+            return script_imgs
+
+        imgs: list[str] = []
         img_attrs = (
             "data-full-src", "data-original", "data-src", "data-cdn", "data-sv1", "data-sv2",
             "data-lazy-src", "data-lazy", "data-url", "data-image",
@@ -523,7 +555,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             re.IGNORECASE,
         )
         for script in soup.find_all("script"):
-            script_text = script.string or script.get_text() or ""
+            script_text = str(script)
             if script_text:
                 cleaned_script = script_text.replace("\\/", "/")
                 for match in url_pattern.finditer(cleaned_script):
