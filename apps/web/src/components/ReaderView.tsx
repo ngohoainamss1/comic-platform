@@ -64,7 +64,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   const [gapMode, setGapMode] = useState<boolean>(() => localStorage.getItem('vr_reader_gap') === '1');
 
   // Auto-scroll mượt 60-120fps bằng requestAnimationFrame (pixel / giây)
-  const [autoScrollPps, setAutoScrollPps] = useState<number>(0); // 0 = tắt, 60..900 px/s
+  const [autoScrollPps, setAutoScrollPps] = useState<number>(0);
   const [autoScrollPaused, setAutoScrollPaused] = useState(false);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number>(0);
@@ -182,7 +182,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     };
   }, [autoScrollPps, autoScrollPaused, readMode]);
 
-  // Tự tạm dừng auto-scroll khi người dùng chạm tay hoặc lăn chuột, tự chạy lại sau 1.2s
+  // Tự tạm dừng auto-scroll khi người dùng chạm tay hoặc lăn chuột
   useEffect(() => {
     if (autoScrollPps <= 0) return;
     const handleUserInteract = () => {
@@ -220,7 +220,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [readMode, totalPages, data.prev_chapter, data.next_chapter, onOpenChapter, autoScrollPps, reportOpen]);
 
-  // Xử lý chạm màn hình (3 vùng cho chế độ lật trang, chạm giữa để ẩn/hiện HUD)
+  // Xử lý chạm màn hình
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, select')) return;
     const w = window.innerWidth;
@@ -268,14 +268,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   const currentIsTall = currentPage && currentPage.width > 0 && currentPage.height / currentPage.width > 1.75;
 
   return (
-    <div className={`min-h-screen flex flex-col select-none transition-colors duration-300 ${THEME_BG[theme]}`}>
+    <div className={`min-h-dvh flex flex-col select-none transition-colors duration-300 ${THEME_BG[theme]}`}>
       {/* Thanh điều hướng trên cùng */}
       {hudVisible && (
-        <header className="fixed top-0 inset-x-0 z-50 bg-[#09090d]/90 backdrop-blur-2xl border-b border-white/10 px-3 sm:px-5 py-2.5 shadow-lg">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+        <header className="fixed top-0 inset-x-0 z-50 bg-[#09090d]/90 backdrop-blur-2xl border-b border-white/10 pt-[calc(0.625rem+var(--sat))] px-safe pb-2.5 shadow-lg">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 px-3 sm:px-5">
             <button
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs sm:text-sm font-semibold text-white transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs sm:text-sm font-semibold text-white transition min-h-[38px]"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">Chi tiết</span>
@@ -293,14 +293,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <button
                 onClick={() => setReportOpen(true)}
                 title="Báo lỗi chương"
-                className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 transition"
+                className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 transition min-w-[38px] min-h-[38px] flex items-center justify-center"
               >
                 <Flag className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setSettingsOpen((s) => !s)}
                 title="Cài đặt trình đọc"
-                className={`p-2 rounded-xl transition ${
+                className={`p-2 rounded-xl transition min-w-[38px] min-h-[38px] flex items-center justify-center ${
                   settingsOpen ? 'bg-rose-500 text-white' : 'bg-white/5 hover:bg-white/10 text-zinc-200'
                 }`}
               >
@@ -311,12 +311,12 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         </header>
       )}
 
-      {/* Bảng cài đặt nhanh (Settings Drawer) */}
+      {/* Bảng cài đặt nhanh (Settings Drawer / Bottom Sheet trên mobile) */}
       {settingsOpen && hudVisible && (
-        <div className="fixed top-14 right-3 sm:right-6 z-50 w-72 sm:w-80 rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/10 p-4 shadow-2xl space-y-4">
+        <div className="fixed inset-x-0 bottom-0 sm:inset-auto sm:top-14 sm:right-6 z-50 w-full sm:w-80 rounded-t-3xl sm:rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/10 p-5 sm:p-4 shadow-2xl space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-4 max-h-[85dvh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-300">Cài đặt trình đọc</span>
-            <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-white">
+            <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-white p-2">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -333,7 +333,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               step={5}
               value={maxWidthPct}
               onChange={(e) => setMaxWidthPct(Number(e.target.value))}
-              className="w-full accent-rose-500"
+              className="w-full accent-rose-500 py-2"
             />
           </div>
 
@@ -348,7 +348,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 <button
                   key={key}
                   onClick={() => setTheme(key)}
-                  className={`py-1.5 rounded-xl text-xs font-bold border transition ${
+                  className={`py-2 rounded-xl text-xs font-bold border transition ${
                     theme === key
                       ? 'bg-rose-500/20 border-rose-500 text-rose-300'
                       : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
@@ -360,7 +360,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             </div>
           </div>
 
-          <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
+          <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer py-1">
             <span>Tách khoảng cách giữa các ảnh</span>
             <input
               type="checkbox"
@@ -375,7 +375,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       {/* Vùng hiển thị ảnh chính */}
       <main
         onClick={handleStageClick}
-        className="flex-1 w-full flex flex-col items-center pt-14 pb-28"
+        className="flex-1 w-full flex flex-col items-center pt-16 pb-28"
       >
         {totalPages === 0 ? (
           <div className="py-24 text-center text-zinc-400">Chương này chưa có trang ảnh nào.</div>
@@ -407,14 +407,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                   <button
                     disabled={!data.prev_chapter}
                     onClick={() => data.prev_chapter && onOpenChapter(data.prev_chapter.id)}
-                    className="flex-1 py-3 rounded-2xl bg-white/10 hover:bg-white/15 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 transition"
+                    className="flex-1 py-3 rounded-2xl bg-white/10 hover:bg-white/15 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 transition min-h-[44px]"
                   >
                     <ChevronLeft className="w-4 h-4" /> Chương trước
                   </button>
                   <button
                     disabled={!data.next_chapter}
                     onClick={() => data.next_chapter && onOpenChapter(data.next_chapter.id)}
-                    className="flex-[2] py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-rose-500/25 transition"
+                    className="flex-[2] py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-rose-500/25 transition min-h-[44px]"
                   >
                     Chương sau <ChevronRight className="w-4 h-4" />
                   </button>
@@ -423,7 +423,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             </div>
           </div>
         ) : (
-          /* Chế độ Lật trang thông minh: ảnh chuẩn vừa màn hình, ảnh dài (webtoon) cho phép cuộn mượt trong trang */
+          /* Chế độ Lật trang thông minh */
           <div className="w-full max-w-4xl flex flex-col items-center px-2">
             {isWebtoonStrip && (
               <div className="mb-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-200 flex items-center gap-2">
@@ -440,7 +440,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             <div
               ref={horizontalScrollRef}
               style={{ width: `${maxWidthPct}%` }}
-              className="w-full h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain rounded-xl bg-black/40 border border-white/5 flex flex-col items-center"
+              className="w-full h-[calc(100dvh-11rem)] overflow-y-auto overscroll-contain rounded-xl bg-black/40 border border-white/5 flex flex-col items-center justify-center"
             >
               {currentPage && (
                 <img
@@ -449,7 +449,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                   className={
                     currentIsTall
                       ? 'w-full h-auto block'
-                      : 'max-h-full max-w-full object-contain my-auto'
+                      : 'max-h-[calc(100dvh-12rem)] max-w-full object-contain my-auto'
                   }
                 />
               )}
@@ -460,11 +460,11 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
       {/* Nút nổi trạng thái nhỏ khi ẩn HUD */}
       {!hudVisible && totalPages > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2">
+        <div className="fixed bottom-[calc(1rem+var(--sab))] right-[calc(1rem+var(--sar))] z-40 flex items-center gap-2">
           {autoScrollPps > 0 && readMode === 'vertical' && (
             <button
               onClick={() => setAutoScrollPaused((p) => !p)}
-              className="bg-rose-500/90 backdrop-blur-xl px-3 py-1.5 rounded-full text-[11px] font-bold text-white shadow-lg flex items-center gap-1"
+              className="bg-rose-500/90 backdrop-blur-xl px-3 py-1.5 rounded-full text-[11px] font-bold text-white shadow-lg flex items-center gap-1 min-h-[38px]"
             >
               {autoScrollPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
               {Math.round(autoScrollPps / 60)}x
@@ -478,11 +478,11 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
       {/* Thanh công cụ dưới cùng */}
       {hudVisible && (
-        <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 px-3 sm:px-5 py-3 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
-          <div className="max-w-3xl mx-auto space-y-2.5">
-            {/* Thanh điều khiển tự cuộn mượt (pixel/giây) */}
+        <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.75rem+var(--sab))] px-safe pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
+          <div className="max-w-3xl mx-auto space-y-2.5 px-3 sm:px-5">
+            {/* Thanh điều khiển tự cuộn mượt */}
             {readMode === 'vertical' ? (
-              <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-1.5">
+              <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
                 <button
                   onClick={() => {
                     if (autoScrollPps === 0) {
@@ -492,7 +492,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                       setAutoScrollPaused((p) => !p);
                     }
                   }}
-                  className={`p-1.5 rounded-lg transition ${
+                  className={`p-2 rounded-lg transition min-w-[36px] min-h-[36px] flex items-center justify-center ${
                     autoScrollPps > 0 && !autoScrollPaused
                       ? 'bg-rose-500 text-white'
                       : 'bg-white/10 text-zinc-300 hover:text-white'
@@ -516,14 +516,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                     setAutoScrollPps(Number(e.target.value));
                     setAutoScrollPaused(false);
                   }}
-                  className="flex-1 accent-rose-500 h-1.5"
+                  className="flex-1 accent-rose-500 h-2 py-2"
                 />
                 <span className="text-[11px] font-extrabold text-rose-400 w-14 text-right shrink-0">
                   {autoScrollPps > 0 ? `${(autoScrollPps / 60).toFixed(1)}x` : 'Tắt'}
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-1.5">
+              <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
                 <span className="text-[11px] font-bold text-zinc-400 shrink-0">Trang</span>
                 <input
                   type="range"
@@ -531,7 +531,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                   max={Math.max(0, totalPages - 1)}
                   value={currentPageIdx}
                   onChange={(e) => setCurrentPageIdx(Number(e.target.value))}
-                  className="flex-1 accent-rose-500 h-1.5"
+                  className="flex-1 accent-rose-500 h-2 py-2"
                 />
                 <span className="text-[11px] font-extrabold text-white w-14 text-right shrink-0">
                   {currentPageIdx + 1}/{totalPages}
@@ -544,7 +544,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <button
                 disabled={!data.prev_chapter}
                 onClick={() => data.prev_chapter && onOpenChapter(data.prev_chapter.id)}
-                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1 transition"
+                className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1 transition min-h-[40px]"
               >
                 <ChevronLeft className="w-4 h-4" /> Trước
               </button>
@@ -552,7 +552,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setReadMode((m) => (m === 'vertical' ? 'horizontal' : 'vertical'))}
-                  className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 transition"
+                  className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 transition min-h-[40px]"
                 >
                   {readMode === 'vertical' ? (
                     <>
@@ -572,7 +572,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <button
                 disabled={!data.next_chapter}
                 onClick={() => data.next_chapter && onOpenChapter(data.next_chapter.id)}
-                className="px-3 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 transition"
+                className="px-3.5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 transition min-h-[40px]"
               >
                 Sau <ChevronRight className="w-4 h-4" />
               </button>
@@ -583,16 +583,16 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
       {/* Modal Báo lỗi chương */}
       {reportOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
             onSubmit={handleSendReport}
-            className="w-full max-w-md rounded-3xl bg-[#121218] border border-white/10 p-5 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-[#121218] border border-white/10 p-5 space-y-4 shadow-2xl pb-[calc(1.25rem+var(--sab))] sm:pb-5 max-h-[85dvh] overflow-y-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-extrabold text-base text-white flex items-center gap-2">
                 <Flag className="w-4 h-4 text-amber-400" /> Báo lỗi Chương {data.chapter.chapter_number}
               </h3>
-              <button type="button" onClick={() => setReportOpen(false)} className="text-zinc-400 hover:text-white">
+              <button type="button" onClick={() => setReportOpen(false)} className="text-zinc-400 hover:text-white p-2">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -602,7 +602,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <select
                 value={reportReason}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2.5 text-sm text-white outline-none focus:border-rose-500"
+                className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-3 text-sm text-white outline-none focus:border-rose-500 min-h-[44px]"
               >
                 <option>Ảnh bị lỗi / không tải được</option>
                 <option>Thiếu trang hoặc trùng lặp trang</option>
@@ -619,24 +619,24 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 value={reportDetail}
                 onChange={(e) => setReportDetail(e.target.value)}
                 placeholder="Ví dụ: Trang 4 bị mất hình..."
-                className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-rose-500"
+                className="w-full rounded-xl bg-black/50 border border-white/10 p-3 text-sm text-white outline-none focus:border-rose-500"
               />
             </div>
 
             {reportMsg && <p className="text-xs font-semibold text-emerald-400">{reportMsg}</p>}
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setReportOpen(false)}
-                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300"
+                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300 min-h-[40px]"
               >
                 Hủy
               </button>
               <button
                 type="submit"
                 disabled={reportSending}
-                className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-xs font-bold text-white"
+                className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-xs font-bold text-white min-h-[40px]"
               >
                 {reportSending ? 'Đang gửi...' : 'Gửi báo lỗi'}
               </button>

@@ -5,25 +5,47 @@
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
-html {
+html, body {
   scroll-behavior: smooth;
   color-scheme: dark;
+  overscroll-behavior-y: none;
 }
 
 body {
   background-color: #09090c;
-  padding-top: var(--sat);
-  padding-bottom: calc(4.5rem + var(--sab));
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (min-width: 768px) {
-  body {
-    padding-bottom: 1.5rem;
-  }
+button, a {
+  touch-action: manipulation;
+}
+
+.min-h-dvh {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.pt-safe {
+  padding-top: var(--sat);
+}
+
+.pb-safe {
+  padding-bottom: var(--sab);
+}
+
+.px-safe {
+  padding-left: var(--sal);
+  padding-right: var(--sar);
 }
 
 .no-scrollbar::-webkit-scrollbar {
