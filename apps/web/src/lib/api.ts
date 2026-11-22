@@ -72,6 +72,8 @@ export interface ChapterPagesPayload {
   prev_chapter: { id: number; chapter_number: number } | null;
   next_chapter: { id: number; chapter_number: number } | null;
   pages: PageItem[];
+  all_chapters?: Array<{ id: number; chapter_number: number; title?: string }>;
+  recommended_comics?: ComicSummary[];
 }
 
 export interface PaginationMeta {

@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Columns,
   Flag,
+  Flame,
   Pause,
   Play,
   ScrollText,
@@ -127,7 +128,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     }
   }, [currentPageIdx, readMode, totalPages, onProgress]);
 
-  // Preload 3 trang tiếp theo ở mọi chế độ đọc
   useEffect(() => {
     [currentPageIdx + 1, currentPageIdx + 2, currentPageIdx + 3].forEach((idx) => {
       const p = data.pages[idx];
@@ -138,7 +138,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     });
   }, [currentPageIdx, data.pages]);
 
-  // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt, loại bỏ xung đột scroll-behavior: smooth trên mobile
+  // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt
   useEffect(() => {
     if (autoScrollPps <= 0 || readMode !== 'vertical') {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -186,7 +186,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     };
   }, [autoScrollPps, readMode]);
 
-  // Dừng tự cuộn khi người dùng lăn chuột (wheel)
   useEffect(() => {
     if (autoScrollPps <= 0) return;
     const handleWheel = () => {
@@ -266,7 +265,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   return (
     <div className={`min-h-dvh flex flex-col select-none transition-colors duration-300 ${THEME_BG[theme]}`}>
-      {/* Thanh điều hướng trên cùng */}
+      {/* Thanh điều hướng trên cùng kèm Dropdown chọn nhanh chương */}
       {hudVisible && (
         <header className="fixed top-0 inset-x-0 z-50 bg-[#09090d]/90 backdrop-blur-2xl border-b border-white/10 pt-[calc(0.625rem+var(--sat))] px-safe pb-2.5 shadow-lg">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 px-3 sm:px-5">
@@ -278,12 +277,26 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <span className="hidden sm:inline">Chi tiết</span>
             </button>
 
-            <div className="flex-1 min-w-0 text-center">
-              <p className="text-xs sm:text-sm font-bold text-white truncate">{data.chapter.comic_title}</p>
-              <p className="text-[11px] text-rose-400 font-semibold">
-                Chương {data.chapter.chapter_number}
-                {data.chapter.title ? ` — ${data.chapter.title}` : ''}
-              </p>
+            <div className="flex items-center gap-2 flex-1 min-w-0 justify-center">
+              <div className="text-center min-w-0">
+                <p className="text-xs font-bold text-white truncate max-w-[140px] sm:max-w-[220px]">{data.chapter.comic_title}</p>
+              </div>
+              {data.all_chapters && data.all_chapters.length > 0 && (
+                <select
+                  value={data.chapter.id}
+                  onChange={(e) => {
+                    const cid = Number(e.target.value);
+                    if (cid) onOpenChapter(cid);
+                  }}
+                  className="bg-black/60 border border-white/15 rounded-xl px-2.5 py-1 text-xs text-lav-300 font-bold outline-none max-w-[120px] sm:max-w-[160px]"
+                >
+                  {data.all_chapters.map((ch) => (
+                    <option key={ch.id} value={ch.id} className="bg-[#121218] text-white">
+                      Chap {ch.chapter_number}{ch.title ? ` — ${ch.title}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -395,29 +408,61 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             ))}
 
             {/* Khối chuyển chương cuối trang */}
-            <div className="w-full max-w-2xl px-4 py-10 space-y-4">
-              <div className="p-5 rounded-3xl bg-white/[0.04] border border-white/10 text-center space-y-4">
+            <div className="w-full max-w-2xl px-4 py-8 space-y-4">
+              <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 text-center space-y-3">
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
                   Hết Chương {data.chapter.chapter_number}
+                  {data.chapter.title ? ` — ${data.chapter.title}` : ''}
                 </p>
                 <div className="flex items-center gap-3">
                   <button
                     disabled={!data.prev_chapter}
                     onClick={() => data.prev_chapter && onOpenChapter(data.prev_chapter.id)}
-                    className="flex-1 py-3 rounded-2xl bg-white/10 hover:bg-white/15 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 transition min-h-[44px]"
+                    className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-30 font-bold text-xs flex items-center justify-center gap-1 transition"
                   >
-                    <ChevronLeft className="w-4 h-4" /> Chương trước
+                    <ChevronLeft className="w-4 h-4" /> Trước
                   </button>
                   <button
                     disabled={!data.next_chapter}
                     onClick={() => data.next_chapter && onOpenChapter(data.next_chapter.id)}
-                    className="flex-[2] py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 disabled:opacity-30 font-bold text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-rose-500/25 transition min-h-[44px]"
+                    className="flex-[2] py-2.5 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 hover:brightness-110 disabled:opacity-30 font-bold text-xs text-white flex items-center justify-center gap-1 shadow-md shadow-lav-500/25 transition"
                   >
                     Chương sau <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             </div>
+
+            {/* Truyện Gợi Ý ở cuối chap: CÓ THỂ BẠN SẼ THÍCH */}
+            {data.recommended_comics && data.recommended_comics.length > 0 && (
+              <div className="w-full max-w-3xl px-4 pt-4 pb-8 space-y-3">
+                <h3 className="text-sm font-bold uppercase text-white flex items-center gap-2 border-l-4 border-lav-500 pl-3">
+                  <Flame className="w-4 h-4 text-mag-400" /> CÓ THỂ BẠN SẼ THÍCH
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {data.recommended_comics.map((rc) => (
+                    <div
+                      key={rc.id}
+                      onClick={() => {
+                        window.location.href = `/comic/${encodeURIComponent(rc.slug)}`;
+                      }}
+                      className="cursor-pointer group space-y-1.5 bg-bgc-layer1 p-2 rounded-lg border border-bd-default hover:border-lav-500 transition"
+                    >
+                      <div className="aspect-[2/3] rounded overflow-hidden bg-bgc-layer2">
+                        <img
+                          src={resolveAssetUrl(rc.cover_url)}
+                          alt={rc.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition"
+                        />
+                      </div>
+                      <p className="text-xs font-semibold text-txt-primary line-clamp-2 group-hover:text-lav-400">
+                        {rc.title}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Khu vực Bình luận dưới Chapter */}
             <div className="w-full max-w-3xl px-4 pt-4 pb-12">
@@ -495,117 +540,45 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         </div>
       )}
 
-      {/* Thanh công cụ dưới cùng */}
+      {/* Thanh công cụ dưới cùng (Đã làm gọn) */}
       {hudVisible && (
-        <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.75rem+var(--sab))] px-safe pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
-          <div className="max-w-3xl mx-auto space-y-2.5 px-3 sm:px-5">
-            {readMode === 'vertical' ? (
-              <div className="flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
-                <button
-                  onClick={() => {
-                    if (autoScrollPps > 0) {
-                      setAutoScrollPps(0);
-                    } else {
-                      setAutoScrollPps(120);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1 transition min-h-[36px] ${
-                    autoScrollPps > 0
-                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30 animate-pulse'
-                      : 'bg-white/10 text-zinc-200 hover:bg-white/15'
-                  }`}
-                >
-                  {autoScrollPps > 0 ? (
-                    <>
-                      <Pause className="w-3.5 h-3.5" /> Dừng
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5" /> Tự cuộn
-                    </>
-                  )}
-                </button>
+        <footer className="fixed bottom-0 inset-x-0 z-50 bg-[#09090d]/92 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.5rem+var(--sab))] px-safe pt-2.5 shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 px-3">
+            <button
+              disabled={!data.prev_chapter}
+              onClick={() => data.prev_chapter && onOpenChapter(data.prev_chapter.id)}
+              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-35 text-xs font-semibold flex items-center gap-1 transition"
+            >
+              <ChevronLeft className="w-4 h-4" /> Trước
+            </button>
 
-                <input
-                  type="range"
-                  min={30}
-                  max={450}
-                  step={30}
-                  value={autoScrollPps || 120}
-                  onChange={(e) => setAutoScrollPps(Number(e.target.value))}
-                  className="flex-1 accent-rose-500 h-2 py-2"
-                />
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {[60, 120, 240, 360].map((spd) => (
-                    <button
-                      key={spd}
-                      onClick={() => setAutoScrollPps(spd)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                        autoScrollPps === spd
-                          ? 'bg-rose-500 text-white'
-                          : 'bg-white/5 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {Math.round(spd / 60)}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
-                <span className="text-[11px] font-bold text-zinc-400 shrink-0">Trang</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, totalPages - 1)}
-                  value={currentPageIdx}
-                  onChange={(e) => setCurrentPageIdx(Number(e.target.value))}
-                  className="flex-1 accent-rose-500 h-2 py-2"
-                />
-                <span className="text-[11px] font-extrabold text-white w-14 text-right shrink-0">
-                  {currentPageIdx + 1}/{totalPages}
-                </span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <button
-                disabled={!data.prev_chapter}
-                onClick={() => data.prev_chapter && onOpenChapter(data.prev_chapter.id)}
-                className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1 transition min-h-[40px]"
+                onClick={() => setReadMode((m) => (m === 'vertical' ? 'horizontal' : 'vertical'))}
+                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold flex items-center gap-1.5 transition"
               >
-                <ChevronLeft className="w-4 h-4" /> Trước
+                {readMode === 'vertical' ? (
+                  <>
+                    <ScrollText className="w-3.5 h-3.5 text-lav-400" /> Cuộn dọc
+                  </>
+                ) : (
+                  <>
+                    <Columns className="w-3.5 h-3.5 text-sky-400" /> Lật trang
+                  </>
+                )}
               </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setReadMode((m) => (m === 'vertical' ? 'horizontal' : 'vertical'))}
-                  className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 transition min-h-[40px]"
-                >
-                  {readMode === 'vertical' ? (
-                    <>
-                      <ScrollText className="w-3.5 h-3.5 text-rose-400" /> Cuộn dọc
-                    </>
-                  ) : (
-                    <>
-                      <Columns className="w-3.5 h-3.5 text-sky-400" /> Lật trang
-                    </>
-                  )}
-                </button>
-                <span className="text-xs font-black text-zinc-300 px-2">
-                  {currentPageIdx + 1} / {totalPages}
-                </span>
-              </div>
-
-              <button
-                disabled={!data.next_chapter}
-                onClick={() => data.next_chapter && onOpenChapter(data.next_chapter.id)}
-                className="px-3.5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 transition min-h-[40px]"
-              >
-                Sau <ChevronRight className="w-4 h-4" />
-              </button>
+              <span className="text-xs font-bold text-zinc-300 px-1">
+                {currentPageIdx + 1} / {totalPages}
+              </span>
             </div>
+
+            <button
+              disabled={!data.next_chapter}
+              onClick={() => data.next_chapter && onOpenChapter(data.next_chapter.id)}
+              className="px-3 py-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 hover:brightness-110 disabled:opacity-35 text-xs font-bold text-white flex items-center gap-1 transition shadow"
+            >
+              Sau <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </footer>
       )}

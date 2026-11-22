@@ -278,14 +278,19 @@ apiRoutes.get('/chapters/:id/pages', async (c) => {
       return c.json({ success: false, message: 'Không tìm thấy chương truyện này.' }, 404);
     }
 
-    const [pagesRes, navRes] = await Promise.all([
+    const comicId = Number(chapterRes.rows[0].comic_id);
+    const [pagesRes, navRes, comicRes] = await Promise.all([
       db.execute({
         sql: `SELECT id, page_index, tg_file_id, gh_fallback_path, width, height, format FROM chapter_pages WHERE chapter_id = ? ORDER BY page_index ASC`,
         args: [chapterId],
       }),
       db.execute({
-        sql: `SELECT id, chapter_number FROM chapters WHERE comic_id = ? ORDER BY chapter_number ASC`,
-        args: [Number(chapterRes.rows[0].comic_id)],
+        sql: `SELECT id, chapter_number, title FROM chapters WHERE comic_id = ? ORDER BY chapter_number ASC`,
+        args: [comicId],
+      }),
+      db.execute({
+        sql: `SELECT id, slug, title, cover_file_id, cover_gh_path, status, views_total, rating_avg, updated_at FROM comics WHERE id != ? AND COALESCE(is_hidden, 0) = 0 ORDER BY RANDOM() LIMIT 6`,
+        args: [comicId],
       }),
     ]);
 
@@ -300,6 +305,23 @@ apiRoutes.get('/chapters/:id/pages', async (c) => {
       }))
     );
 
+    const recommendedComics = await Promise.all(
+      comicRes.rows.map(async (row) => {
+        const rf = String(row.cover_file_id || '');
+        const rg = String(row.cover_gh_path || '');
+        return {
+          id: Number(row.id),
+          slug: String(row.slug),
+          title: String(row.title),
+          cover_url: rf ? await signImageUrl(rf, c.env.HMAC_SECRET_KEY, ttl, rg) : '',
+          status: String(row.status),
+          views_total: Number(row.views_total || 0),
+          rating_avg: Number(row.rating_avg || 5.0),
+          updated_at: String(row.updated_at),
+        };
+      })
+    );
+
     const allChapters = navRes.rows;
     const currentIdx = allChapters.findIndex((ch) => Number(ch.id) === chapterId);
     const prevChapter = currentIdx > 0 ? allChapters[currentIdx - 1] : null;
@@ -308,7 +330,14 @@ apiRoutes.get('/chapters/:id/pages', async (c) => {
     c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({
       success: true,
-      data: { chapter: chapterRes.rows[0], prev_chapter: prevChapter, next_chapter: nextChapter, pages },
+      data: {
+        chapter: chapterRes.rows[0],
+        prev_chapter: prevChapter,
+        next_chapter: nextChapter,
+        pages,
+        all_chapters: allChapters,
+        recommended_comics: recommendedComics,
+      },
     });
   } catch {
     return c.json({ success: false, message: 'Không thể tải danh sách trang ảnh.' }, 500);
