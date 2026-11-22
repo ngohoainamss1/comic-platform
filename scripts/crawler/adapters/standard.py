@@ -201,23 +201,30 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 for a in soup.select("a[href]")
                 if any(
                     k in (a.get("href") or "").lower()
-                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-")
+                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-", "/oneshot", "oneshot")
                 )
             ]
 
         for a in chapter_links:
             href = self._normalize_url(a.get("href", ""), page_url)
             text = a.get_text(" ", strip=True)
-            match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
-            if not match:
-                match = re.search(r"(\d+(?:\.\d+)?)", text)
-            if not match:
-                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
-            if match and href:
-                num = float(match.group(1))
+            low_text = text.lower()
+            low_href = href.lower()
+
+            num = None
+            if "oneshot" in low_text or "oneshot" in low_href:
+                num = 1.0
+            else:
+                match = re.search(r"(?:chap(?:ter)?|chương|c)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+                if not match:
+                    match = re.search(r"(?:chuong|chapter|chap|c)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
+                if match:
+                    num = float(match.group(1))
+
+            if num is not None and href:
                 if num not in seen_nums:
                     seen_nums.add(num)
-                    chap_title = text if re.search(r"\d", text) else f"Chapter {num:g}"
+                    chap_title = text.split("\n")[0].strip() if text else f"Chapter {num:g}"
                     chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
 
         for opt in soup.select("select.select-chapter option, .chapter-nav select option, select[name*='chapter'] option"):
@@ -237,6 +244,16 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                     chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
 
         chapters.sort(key=lambda c: c.chapter_number)
+        if not chapters:
+            for a in soup.select("a[href]"):
+                href = self._normalize_url(a.get("href", ""), page_url)
+                text = a.get_text(" ", strip=True).lower()
+                if "đọc ngay" in text or "oneshot" in href.lower() or "doc-ngay" in href.lower():
+                    if href and href not in [c.url for c in chapters]:
+                        chapters.append(ChapterInfo(chapter_number=1.0, title="Oneshot / Chap 1", url=href))
+                        break
+        if not chapters:
+            chapters.append(ChapterInfo(chapter_number=1.0, title="Chapter 1", url=page_url))
         return chapters
 
     def _try_fetch_ajax_chapters(self, comic_url: str, soup: BeautifulSoup) -> list[ChapterInfo]:
@@ -492,7 +509,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             ).lower()
             if any(
                 h in meta_hint
-                for h in ("trang", "page", "chap", "chuong", "comic", "manga", "truyen", "cdn", "storage", "/0", "/1")
+                for h in ("trang", "page", "chap", "chuong", "comic", "manga", "truyen", "cdn", "storage", "/0", "/1", "/manga-images/", "/story-images/")
             ):
                 packed = "|".join(dict.fromkeys(cands))
                 if packed not in imgs:
