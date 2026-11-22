@@ -35,7 +35,13 @@ apiRoutes.get('/settings/public', async (c) => {
 apiRoutes.get('/genres', async (c) => {
   try {
     const db = getDb(c.env);
-    const result = await db.execute('SELECT id, slug, name FROM genres ORDER BY name ASC');
+    await ensureSchemaMigrated(db);
+    const result = await db.execute(`
+      SELECT g.id, g.slug, g.name, g.description,
+             (SELECT COUNT(*) FROM comic_genres cg WHERE cg.genre_id = g.id) AS comic_count
+      FROM genres g
+      ORDER BY g.name ASC
+    `);
     c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
     return c.json({ success: true, data: result.rows });
   } catch {

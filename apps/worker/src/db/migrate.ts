@@ -89,6 +89,15 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
       )`
     );
     await db.execute(
+      `CREATE TABLE IF NOT EXISTS genres (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT DEFAULT '',
+        comic_count INTEGER DEFAULT 0
+      )`
+    );
+    await db.execute(
       `CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(comic_id, chapter_id, parent_id, created_at DESC)`
     );
 
@@ -96,10 +105,19 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
     try { await db.execute('ALTER TABLE comics ADD COLUMN is_hidden INTEGER DEFAULT 0'); } catch {}
     try { await db.execute('ALTER TABLE comics ADD COLUMN translator TEXT DEFAULT ""'); } catch {}
     try { await db.execute('ALTER TABLE comics ADD COLUMN likes_count INTEGER DEFAULT 0'); } catch {}
+    try { await db.execute('ALTER TABLE genres ADD COLUMN description TEXT DEFAULT ""'); } catch {}
+    try { await db.execute('ALTER TABLE genres ADD COLUMN comic_count INTEGER DEFAULT 0'); } catch {}
+
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_name', 'VinaHentai')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_enabled', '0')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_text', '')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('maintenance_mode', '0')");
+
+    // Seed some popular genre descriptions
+    await db.execute(`UPDATE genres SET description = 'Nhân vật bước vào hành trình phiêu lưu, chiến đấu kịch tính kết hợp khám phá thế giới fantasy, dị giới.' WHERE slug = 'hanh-dong'`);
+    await db.execute(`UPDATE genres SET description = 'Tác phẩm dành riêng cho độc giả trưởng thành, nội dung nhạy cảm.' WHERE slug = 'ngon-tinh'`);
+    await db.execute(`UPDATE genres SET description = 'Biểu cảm nhân vật khi đạt cực khoái mạnh liệt: mắt đảo, lưỡi thè, mặt đỏ, nước dãi chảy ra.' WHERE slug = 'ahegao' OR slug = 'adult'`);
+
     migrated = true;
   } catch (err) {
     console.error('Migration warning:', err);

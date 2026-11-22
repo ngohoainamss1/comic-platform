@@ -5,6 +5,7 @@ export interface GenreItem {
   id: number;
   slug: string;
   name: string;
+  description?: string;
   comic_count?: number;
 }
 

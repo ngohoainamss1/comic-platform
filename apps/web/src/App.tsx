@@ -961,11 +961,11 @@ export function App() {
                     <div className="text-lav-400 font-black text-lg border-b border-bd-default pb-1">
                       {letter}
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {matchedGenres.map((g) => {
                         const active = incGenres.includes(g.slug);
                         return (
-                          <button
+                          <div
                             key={g.id}
                             onClick={() => {
                               setIncGenres([g.slug]);
@@ -973,14 +973,26 @@ export function App() {
                               setPage(1);
                               navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
                             }}
-                            className={`p-3 rounded-xl text-left text-sm font-semibold truncate transition border ${
+                            className={`p-4 rounded-xl text-left transition border cursor-pointer space-y-1.5 ${
                               active
                                 ? 'border-lav-500 bg-lav-500/20 text-txt-focus'
                                 : 'border-bd-default bg-bgc-layer2 hover:border-lav-500 text-txt-primary'
                             }`}
                           >
-                            {g.name}
-                          </button>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-sm sm:text-base text-white hover:text-lav-400">
+                                {g.name}
+                              </span>
+                              <span className="text-xs font-semibold text-txt-secondary shrink-0">
+                                {(g.comic_count || 0).toLocaleString('vi-VN')} truyện &gt;
+                              </span>
+                            </div>
+                            {g.description && (
+                              <p className="text-xs text-txt-secondary line-clamp-2 leading-relaxed">
+                                {g.description}
+                              </p>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
