@@ -60,7 +60,7 @@ SLICE_TARGET_HEIGHT = int(os.getenv("SLICE_TARGET_HEIGHT", "3600"))
 SLICE_MAX_HEIGHT = int(os.getenv("SLICE_MAX_HEIGHT", "4200"))
 STRIP_SOURCE_WATERMARKS = os.getenv("STRIP_SOURCE_WATERMARKS", "1").strip() != "0"
 BRAND_ENABLE_BANNERS = os.getenv("BRAND_ENABLE_BANNERS", "1").strip() != "0"
-CLEAN_INPAGE_WATERMARKS = os.getenv("CLEAN_INPAGE_WATERMARKS", "1").strip() != "0"
+CLEAN_INPAGE_WATERMARKS = os.getenv("CLEAN_INPAGE_WATERMARKS", "0").strip() != "0"
 
 _DB_LOCK = threading.Lock()
 _TG_LOCK = threading.Lock()
