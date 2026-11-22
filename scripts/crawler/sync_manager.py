@@ -893,6 +893,11 @@ def _process_job(
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
+def is_chapter_url(url: str) -> bool:
+    low = url.lower()
+    return any(k in low for k in ("/chap-", "/chuong-", "/chapter-", "/oneshot"))
+
+
 def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int = BATCH_LIMIT):
     run_t0 = time.monotonic()
     db_state = {"client": get_db()}
@@ -923,19 +928,35 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
         if (time.monotonic() - run_t0) >= MAX_RUNTIME_SECONDS * 0.6:
             return
 
+        specific_chap_url = ""
+        specific_chap_num = None
+        target_scan_url = comic_url
+        if is_chapter_url(comic_url):
+            specific_chap_url = comic_url
+            match_c = re.search(r"(?:chap(?:ter)?|chương|c)[-_]?(\d+(?:\.\d+)?)", comic_url, re.IGNORECASE)
+            if match_c:
+                specific_chap_num = float(match_c.group(1))
+            else:
+                specific_chap_num = 1.0
+            parsed_u = urlparse(comic_url)
+            parts = parsed_u.path.rstrip("/").split("/")
+            if len(parts) > 1 and any(k in parts[-1].lower() for k in ("chap", "chuong", "chapter", "oneshot")):
+                parent_path = "/".join(parts[:-1])
+                target_scan_url = f"{parsed_u.scheme}://{parsed_u.netloc}{parent_path}"
+
         adapter = get_adapter(base_url, feed_url)
         try:
-            print(f"[Đang quét] {comic_url}")
-            detail = adapter.fetch_comic_metadata(comic_url)
-            breaker.record_success(comic_url)
+            print(f"[Đang quét] {target_scan_url} (gốc: {comic_url})")
+            detail = adapter.fetch_comic_metadata(target_scan_url)
+            breaker.record_success(target_scan_url)
 
             if not detail.chapters:
-                print(f"[Cảnh báo] Không tìm thấy danh sách chương tại {comic_url} (Title: {detail.title})")
+                print(f"[Cảnh báo] Không tìm thấy danh sách chương tại {target_scan_url} (Title: {detail.title})")
                 if watchlist_id is not None:
                     mark_watchlist_error(db_state, watchlist_id)
                 return
 
-            comic_id, slug, is_new = ensure_comic_exists(db_state, detail, comic_url)
+            comic_id, slug, is_new = ensure_comic_exists(db_state, detail, target_scan_url)
             comic_cache[slug] = (comic_id, detail.title)
             if slug not in target_slugs:
                 target_slugs.append(slug)
@@ -949,10 +970,11 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
             }
             job_stmts: list[tuple[str, list]] = []
             for ch in detail.chapters:
-                if ch.chapter_number not in existing_nums:
+                should_add = ch.chapter_number not in existing_nums or (specific_chap_num is not None and abs(ch.chapter_number - specific_chap_num) < 1e-4)
+                if should_add:
                     job_stmts.append(
                         (
-                            "INSERT OR IGNORE INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, status) VALUES (?, ?, ?, ?, 'pending')",
+                            "INSERT INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, status) VALUES (?, ?, ?, ?, 'pending') ON CONFLICT(source_chapter_url) DO UPDATE SET status = 'pending', retry_count = 0, error_log = ''",
                             [src_id, slug, ch.chapter_number, ch.url],
                         )
                     )
