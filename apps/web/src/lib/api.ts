@@ -378,6 +378,16 @@ export async function fetchMirrorList(): Promise<string[]> {
   }
 }
 
+export async function syncMirrorListToServiceWorker(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+  const mirrors = await fetchMirrorList();
+  if (mirrors.length === 0) return;
+
+  const reg = await navigator.serviceWorker.ready;
+  reg.active?.postMessage({ type: 'SYNC_MIRRORS', mirrors });
+}
+
+
 // ==================== ADMIN API ====================
 export function getAdminToken(): string {
   return localStorage.getItem(ADMIN_TOKEN_KEY) || '';
