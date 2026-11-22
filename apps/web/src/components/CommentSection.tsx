@@ -65,15 +65,18 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
+  const numComicId = Number(comicId);
+  const isValidComic = Number.isFinite(numComicId) && numComicId > 0;
+
   const loadComments = async () => {
-    if (!comicId || !Number.isFinite(comicId) || comicId <= 0) {
+    if (!isValidComic) {
       setLoading(false);
       setComments([]);
       return;
     }
     setLoading(true);
     try {
-      const data = await fetchComments(comicId, chapterId);
+      const data = await fetchComments(numComicId, chapterId);
       setComments(data);
     } catch {
       setComments([]);
@@ -84,7 +87,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   useEffect(() => {
     loadComments();
-  }, [comicId, chapterId]);
+  }, [numComicId, chapterId]);
 
   // Đóng picker khi click ra ngoài
   useEffect(() => {
@@ -113,16 +116,15 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       onRequireAuth();
       return;
     }
-    if (!comicId || !Number.isFinite(comicId) || comicId <= 0) {
-      alert('Mã truyện không hợp lệ.');
+    if (!isValidComic) {
       return;
     }
     if (!content.trim() && !selectedMeme) return;
 
     try {
       await postComment({
-        comic_id: comicId,
-        chapter_id: chapterId,
+        comic_id: numComicId,
+        chapter_id: chapterId ? Number(chapterId) : null,
         content: content.trim(),
         meme_url: selectedMeme,
       });
@@ -140,16 +142,15 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       onRequireAuth();
       return;
     }
-    if (!comicId || !Number.isFinite(comicId) || comicId <= 0) {
-      alert('Mã truyện không hợp lệ.');
+    if (!isValidComic) {
       return;
     }
     if (!replyContent.trim() && !replyMeme) return;
 
     try {
       await postComment({
-        comic_id: comicId,
-        chapter_id: chapterId,
+        comic_id: numComicId,
+        chapter_id: chapterId ? Number(chapterId) : null,
         parent_id: parentId,
         reply_to_name: replyingToName,
         content: replyContent.trim(),
@@ -210,6 +211,14 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const totalComments = comments.reduce((acc, c) => acc + 1 + c.replies.length, 0);
+
+  if (!isValidComic) {
+    return (
+      <div className="rounded-2xl bg-bgc-layer1 border border-bd-default p-4 text-center text-xs text-txt-secondary">
+        Đang tải khung bình luận...
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl bg-bgc-layer1 border border-bd-default p-4 sm:p-6 space-y-6">
@@ -421,7 +430,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
         )}
       </form>
 
-      {/* Danh sách bình luận chuẩn VinaHentai UI */}
+      {/* Danh sách bình luận */}
       <div className="divide-y divide-white/5 space-y-4 pt-2">
         {loading ? (
           <p className="text-xs text-txt-secondary text-center py-8">Đang tải bình luận...</p>
