@@ -1,4 +1,4 @@
-export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin';
+export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin' | 'summon' | 'profile';
 export type ModalType = 'filter' | 'backup' | null;
 
 export interface RouteState {
@@ -23,6 +23,18 @@ export function parseRouteFromLocation(loc: Location = window.location): RouteSt
     return { view: 'admin' };
   }
 
+  if (path === '/waifu/summon' || path === '/summon') {
+    return { view: 'summon' };
+  }
+
+  if (path === '/leaderboard') {
+    return { view: 'ranking', sort: 'top-day' };
+  }
+
+  if (path.startsWith('/profile')) {
+    return { view: 'profile' };
+  }
+
   if (path.startsWith('/comic/')) {
     const slug = decodeURIComponent(path.replace('/comic/', '').replace(/\/$/, ''));
     return { view: 'detail', slug };
@@ -34,7 +46,7 @@ export function parseRouteFromLocation(loc: Location = window.location): RouteSt
     return { view: 'reader', chapterId: Number.isFinite(chapterId) ? chapterId : undefined };
   }
 
-  if (path === '/browse') {
+  if (path === '/browse' || path === '/search' || path === '/search/advanced') {
     const q = searchParams.get('q') || undefined;
     const sort = searchParams.get('sort') || undefined;
     const status = searchParams.get('status') || undefined;
@@ -84,6 +96,10 @@ export function buildUrlFromRoute(route: RouteState): string {
   switch (route.view) {
     case 'admin':
       return '/admin';
+    case 'summon':
+      return '/waifu/summon';
+    case 'profile':
+      return '/profile';
     case 'detail':
       return route.slug ? `/comic/${encodeURIComponent(route.slug)}` : '/';
     case 'reader':

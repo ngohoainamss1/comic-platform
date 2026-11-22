@@ -115,6 +115,9 @@ export function App() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
 
+  // Summon state
+  const [summonResult, setSummonResult] = useState<string | null>(null);
+
   // Danh sách truyện chính (Home / Browse / Ranking)
   const [comics, setComics] = useState<ComicSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -320,6 +323,23 @@ export function App() {
         openComicDetail(pick.slug);
       }
     } catch {}
+  };
+
+  const handleSummon = (_count: number) => {
+    const names = [
+      'Asuna Hentai',
+      'Zero Two Waifu',
+      'Rem Maid',
+      'Kurumi Tokisaki',
+      'Rias Gremory',
+      'Chika Fujiwara',
+      'Nezuko Kamado',
+      'Power Chainsaw',
+      'Makima Control',
+      'Hatsune Miku',
+    ];
+    const pick = names[Math.floor(Math.random() * names.length)];
+    setSummonResult(pick);
   };
 
   const openChapter = async (chapterId: number, options?: { replace?: boolean }) => {
@@ -691,7 +711,7 @@ export function App() {
             </div>
           )}
 
-          {/* Tầng 2: Thanh điều hướng tab ngang (Trang chủ | Thể loại | BXH | Hoàn thành | Random | Tủ truyện) */}
+          {/* Tầng 2: Thanh điều hướng tab ngang */}
           <nav
             aria-label="Điều hướng chính"
             className="no-scrollbar relative z-30 flex w-full overflow-x-auto px-3 pt-1"
@@ -744,6 +764,18 @@ export function App() {
               >
                 <Trophy className="w-3.5 h-3.5" />
                 <span>BXH</span>
+              </button>
+
+              <button
+                onClick={() => navigateTo({ view: 'summon' })}
+                className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  view === 'summon'
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-lav-400" />
+                <span>Triệu hồi</span>
               </button>
 
               <button
@@ -833,6 +865,79 @@ export function App() {
 
       {/* ==================== MAIN CONTENT ==================== */}
       <main className="container-page mx-auto px-4 pt-4 md:pt-6 space-y-8">
+        {/* ==================== TRANG TRIỆU HỒI (SUMMON / GACHAPON) ==================== */}
+        {view === 'summon' && (
+          <section className="space-y-6 max-w-4xl mx-auto pb-20">
+            <div className="rounded-2xl overflow-hidden border border-bd-strong bg-bgc-layer1 shadow-2xl relative p-6 sm:p-8 space-y-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-lav-500/10 via-mag-500/10 to-transparent pointer-events-none" />
+              <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-bd-default pb-4">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                    <Sparkles className="w-6 h-6 text-lav-400" /> Triệu Hồi Waifu
+                  </h1>
+                  <p className="text-xs sm:text-sm text-txt-secondary mt-1">
+                    Trải nghiệm quay thưởng nhận nhân vật anime yêu thích mỗi ngày!
+                  </p>
+                </div>
+                <div className="flex bg-bgc-layer2 p-1 rounded-xl border border-bd-default">
+                  <span className="px-3 py-1.5 rounded-lg bg-lav-500 text-white text-xs font-bold">Banner Thường</span>
+                </div>
+              </div>
+
+              {!currentUser ? (
+                <div className="text-center py-12 space-y-3 rounded-xl bg-black/40 border border-bd-default">
+                  <p className="text-sm text-txt-secondary">Bạn chưa đăng nhập nên đây là chế độ quay thử.</p>
+                  <button
+                    onClick={() => setAuthModalOpen(true)}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 text-xs font-bold text-white shadow-md shadow-lav-500/25"
+                  >
+                    Đăng nhập ngay để lưu waifu
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                  <div className="rounded-2xl aspect-[3/4] bg-bgc-layer2 border border-bd-default flex flex-col items-center justify-center p-6 text-center space-y-3 shadow-inner relative overflow-hidden group">
+                    <img
+                      src={getAvatarUrl('lorelei:' + (summonResult || 'waifu_start'), 'waifu')}
+                      alt="Waifu"
+                      className="w-40 h-40 rounded-2xl object-cover border-2 border-lav-500 shadow-2xl group-hover:scale-105 transition duration-500"
+                    />
+                    <div>
+                      <h3 className="font-extrabold text-base text-white">
+                        {summonResult ? `✨ ${summonResult}` : 'Chưa triệu hồi lượt nào'}
+                      </h3>
+                      <p className="text-xs text-txt-secondary mt-1">Nhấn nút bên dưới để bắt đầu triệu hồi!</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-black/40 border border-bd-default text-xs space-y-2">
+                      <p className="font-bold text-txt-focus">• Còn 3 lượt lẻ và 3 lượt x10 hôm nay.</p>
+                      <p className="text-txt-secondary">• Waifu nhận được sẽ xuất hiện ngẫu nhiên với độ hiếm khác nhau.</p>
+                      <p className="text-txt-secondary">• Trải nghiệm thị giác tốt nhất khi xoay ngang màn hình.</p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => handleSummon(1)}
+                        className="flex-1 py-3.5 rounded-xl bg-bgc-layer2 hover:bg-lav-500/20 border border-bd-strong text-txt-primary font-bold text-sm shadow-md transition flex items-center justify-center gap-2"
+                      >
+                        <Sparkles className="w-4 h-4 text-lav-400" /> TRIỆU HỒI
+                      </button>
+                      <button
+                        onClick={() => handleSummon(10)}
+                        className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 hover:brightness-110 text-white font-bold text-sm shadow-lg shadow-lav-500/30 transition flex items-center justify-center gap-2"
+                      >
+                        <Flame className="w-4 h-4" /> TRIỆU HỒI X10
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* ==================== TRANG CHỦ: TRUYỆN ĐỀ CỬ ==================== */}
         {view === 'home' && heroComics.length > 0 && (
           <section className="space-y-3">
@@ -1356,14 +1461,13 @@ export function App() {
           </section>
         )}
 
-        {/* ==================== TRANG CHI TIẾT TRUYỆN (CHUẨN VINAHENTAI) ==================== */}
+        {/* ==================== TRANG CHI TIẾT TRUYỆN ==================== */}
         {view === 'detail' && (
           <section className="pb-16">
             {detailLoading || !selectedComic ? (
               <div className="py-20 text-center text-txt-secondary">Đang tải thông tin truyện...</div>
             ) : (
               <>
-                {/* Breadcrumb */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-txt-focus text-sm font-medium">
                   <ol className="flex flex-wrap items-center gap-1">
                     <li className="flex items-center gap-1">
@@ -1381,9 +1485,7 @@ export function App() {
                   </ol>
                 </nav>
 
-                {/* Main Comic Info Box */}
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-                  {/* Cover */}
                   <div className="relative mx-auto w-48 sm:w-56 aspect-[2/3] flex-shrink-0 overflow-hidden rounded-lg border border-bd-default bg-bgc-layer1 shadow-xl">
                     <img
                       src={resolveAssetUrl(selectedComic.cover_url)}
@@ -1392,7 +1494,6 @@ export function App() {
                     />
                   </div>
 
-                  {/* Metadata Column */}
                   <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-1">
                     <div className="flex flex-col gap-1">
                       <h1 className="text-txt-primary text-2xl leading-snug font-semibold">
@@ -1421,7 +1522,6 @@ export function App() {
 
                     <div className="border-bd-default h-0 border-t" />
 
-                    {/* Metadata Grid */}
                     <div className="grid grid-cols-[auto_1fr] items-center gap-y-3 gap-x-3 text-sm sm:text-base">
                       <div className="text-txt-secondary w-28 font-medium">Tình trạng:</div>
                       <div className="text-txt-primary font-medium">
@@ -1533,7 +1633,6 @@ export function App() {
                       </p>
                     )}
 
-                    {/* Action Buttons */}
                     <div className="flex flex-wrap items-center gap-2.5 pt-1">
                       <button
                         type="button"
@@ -1678,6 +1777,12 @@ export function App() {
                   className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
                 >
                   <Trophy className="w-4 h-4 text-mag-400" /> Bảng xếp hạng
+                </button>
+                <button
+                  onClick={() => navigateTo({ view: 'summon' })}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <Sparkles className="w-4 h-4 text-lav-400" /> Triệu hồi Waifu
                 </button>
                 <button
                   onClick={() => navigateTo({ view: 'library', libraryTab: 'bookmarks' })}
