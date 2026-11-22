@@ -1,5 +1,5 @@
-const SHELL_CACHE = 'vinareader-shell-v1';
-const MIRROR_CACHE = 'vinareader-mirrors-v1';
+const SHELL_CACHE = 'vinareader-shell-v2';
+const MIRROR_CACHE = 'vinareader-mirrors-v2';
 let mirrorList = [];
 let activeMirrorIndex = 0;
 
@@ -11,7 +11,17 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== SHELL_CACHE && key !== MIRROR_CACHE) {
+            return caches.delete(key);
+          }
+        })
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('message', (event) => {
@@ -72,6 +82,21 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/img/')) {
     event.respondWith(handleApiOrImageWithFailover(event.request));
+    return;
+  }
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html') || caches.match('/'))
+    );
     return;
   }
 

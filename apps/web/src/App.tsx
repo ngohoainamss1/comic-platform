@@ -49,10 +49,16 @@ import {
   saveHistory,
   toggleBookmark,
 } from './lib/api';
+import {
+  parseRouteFromLocation,
+  pushRoute,
+  replaceRoute,
+  pushModalState,
+  type RouteState,
+  type ViewMode,
+} from './lib/router';
 import { ReaderView } from './components/ReaderView';
 import { AdminPanel } from './components/AdminPanel';
-
-type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin';
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -71,10 +77,9 @@ function formatRelTime(iso: string): string {
 }
 
 export function App() {
-  const [view, setView] = useState<ViewMode>(() => {
-    if (window.location.pathname === '/admin' || window.location.hash === '#/admin') return 'admin';
-    return 'home';
-  });
+  const initRoute = useMemo(() => parseRouteFromLocation(), []);
+  const [view, setView] = useState<ViewMode>(initRoute.view);
+  const [libraryTab, setLibraryTab] = useState<'bookmarks' | 'history'>(initRoute.libraryTab || 'bookmarks');
 
   const [publicSettings, setPublicSettings] = useState<PublicSettings>({
     site_name: 'VinaReader',
@@ -92,15 +97,17 @@ export function App() {
   // Danh sách truyện chính (Home / Browse / Ranking)
   const [comics, setComics] = useState<ComicSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState<number>(initRoute.page || 1);
   const [totalPages, setTotalPages] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [activeQuery, setActiveQuery] = useState('');
-  const [sort, setSort] = useState<string>('latest');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [authorFilter, setAuthorFilter] = useState<string>('');
-  const [incGenres, setIncGenres] = useState<string[]>([]);
-  const [excGenres, setExcGenres] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState(initRoute.q || '');
+  const [activeQuery, setActiveQuery] = useState(initRoute.q || '');
+  const [sort, setSort] = useState<string>(
+    initRoute.sort || (initRoute.view === 'ranking' ? 'top-day' : 'latest')
+  );
+  const [statusFilter, setStatusFilter] = useState<string>(initRoute.status || 'all');
+  const [authorFilter, setAuthorFilter] = useState<string>(initRoute.author || '');
+  const [incGenres, setIncGenres] = useState<string[]>(initRoute.inc || []);
+  const [excGenres, setExcGenres] = useState<string[]>(initRoute.exc || []);
   const [showFilterModal, setShowFilterModal] = useState(false);
 
   // Chi tiết truyện & Trình đọc
@@ -113,12 +120,31 @@ export function App() {
   const [readerData, setReaderData] = useState<ChapterPagesPayload | null>(null);
 
   // Tủ truyện & Lịch sử
-  const [libraryTab, setLibraryTab] = useState<'bookmarks' | 'history'>('bookmarks');
   const [bookmarks, setBookmarks] = useState<ComicSummary[]>(() => getBookmarks());
   const [historyList, setHistoryList] = useState<HistoryItem[]>(() => getHistory());
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [backupMsg, setBackupMsg] = useState('');
+
+  const navigateTo = (newRoute: RouteState, opts?: { replace?: boolean }) => {
+    if (opts?.replace) {
+      replaceRoute(newRoute);
+    } else {
+      pushRoute(newRoute);
+    }
+    setView(newRoute.view);
+    if (newRoute.libraryTab) setLibraryTab(newRoute.libraryTab);
+    if (newRoute.q !== undefined) {
+      setActiveQuery(newRoute.q);
+      setSearchInput(newRoute.q);
+    }
+    if (newRoute.sort) setSort(newRoute.sort);
+    if (newRoute.status) setStatusFilter(newRoute.status);
+    if (newRoute.author !== undefined) setAuthorFilter(newRoute.author);
+    if (newRoute.inc) setIncGenres(newRoute.inc);
+    if (newRoute.exc) setExcGenres(newRoute.exc);
+    if (newRoute.page) setPage(newRoute.page);
+  };
 
   const loadSettings = useCallback(async () => {
     const s = await fetchPublicSettings();
@@ -130,6 +156,71 @@ export function App() {
     loadSettings();
     fetchGenres().then(setGenres).catch(() => {});
   }, [loadSettings]);
+
+  // Initial deep link hydration
+  useEffect(() => {
+    if (initRoute.view === 'detail' && initRoute.slug) {
+      setDetailLoading(true);
+      fetchComicDetail(initRoute.slug)
+        .then(setSelectedComic)
+        .catch(() => setSelectedComic(null))
+        .finally(() => setDetailLoading(false));
+    } else if (initRoute.view === 'reader' && initRoute.chapterId) {
+      fetchChapterPages(initRoute.chapterId)
+        .then((payload) => {
+          setReaderData(payload);
+          setView('reader');
+        })
+        .catch(() => {});
+    }
+  }, [initRoute]);
+
+  // Handle popstate (Back/Forward)
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      const state = e.state as { modal?: 'filter' | 'backup' } | null;
+      if (state?.modal === 'filter') {
+        setShowFilterModal(true);
+        setBackupModalOpen(false);
+      } else if (state?.modal === 'backup') {
+        setBackupModalOpen(true);
+        setShowFilterModal(false);
+      } else {
+        setShowFilterModal(false);
+        setBackupModalOpen(false);
+      }
+
+      const route = parseRouteFromLocation();
+      setView(route.view);
+      if (route.libraryTab) setLibraryTab(route.libraryTab);
+      if (route.q !== undefined) {
+        setActiveQuery(route.q);
+        setSearchInput(route.q);
+      }
+      if (route.sort) setSort(route.sort);
+      if (route.status) setStatusFilter(route.status);
+      if (route.author !== undefined) setAuthorFilter(route.author);
+      if (route.inc) setIncGenres(route.inc);
+      if (route.exc) setExcGenres(route.exc);
+      if (route.page) setPage(route.page);
+
+      if (route.view === 'detail' && route.slug && selectedComic?.slug !== route.slug) {
+        setDetailLoading(true);
+        fetchComicDetail(route.slug)
+          .then(setSelectedComic)
+          .catch(() => setSelectedComic(null))
+          .finally(() => setDetailLoading(false));
+      }
+      if (route.view === 'reader' && route.chapterId && readerData?.chapter.id !== route.chapterId) {
+        fetchChapterPages(route.chapterId)
+          .then(setReaderData)
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedComic?.slug, readerData?.chapter.id]);
 
   // Tải Hero Spotlight
   useEffect(() => {
@@ -172,8 +263,8 @@ export function App() {
   }, [view, page, activeQuery, sort, statusFilter, authorFilter, incGenres, excGenres]);
 
   const openComicDetail = async (slug: string) => {
+    navigateTo({ view: 'detail', slug });
     setDetailLoading(true);
-    setView('detail');
     setChapterSearch('');
     setRatedDone(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -187,11 +278,11 @@ export function App() {
     }
   };
 
-  const openChapter = async (chapterId: number) => {
+  const openChapter = async (chapterId: number, options?: { replace?: boolean }) => {
     try {
       const payload = await fetchChapterPages(chapterId);
       setReaderData(payload);
-      setView('reader');
+      navigateTo({ view: 'reader', chapterId }, { replace: options?.replace });
       incrementComicView(payload.chapter.comic_id);
 
       const coverUrl =
@@ -262,8 +353,11 @@ export function App() {
     return (
       <AdminPanel
         onExit={() => {
-          setView('home');
-          if (window.location.pathname === '/admin') window.history.replaceState({}, '', '/');
+          if (window.history.length > 1 && window.history.state?.fromApp) {
+            window.history.back();
+          } else {
+            navigateTo({ view: 'home' });
+          }
         }}
         onSettingsUpdated={loadSettings}
       />
@@ -276,9 +370,15 @@ export function App() {
         data={readerData}
         onBack={() => {
           setHistoryList(getHistory());
-          openComicDetail(readerData.chapter.comic_slug);
+          if (window.history.length > 1 && window.history.state?.fromApp) {
+            window.history.back();
+          } else if (readerData?.chapter?.comic_slug) {
+            openComicDetail(readerData.chapter.comic_slug);
+          } else {
+            navigateTo({ view: 'home' });
+          }
         }}
-        onOpenChapter={openChapter}
+        onOpenChapter={(id) => openChapter(id, { replace: true })}
         onProgress={handleReaderProgress}
       />
     );
@@ -316,7 +416,6 @@ export function App() {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
           <button
             onClick={() => {
-              setView('home');
               setActiveQuery('');
               setSearchInput('');
               setAuthorFilter('');
@@ -324,6 +423,7 @@ export function App() {
               setExcGenres([]);
               setSort('latest');
               setPage(1);
+              navigateTo({ view: 'home' });
             }}
             className="flex items-center gap-2.5 shrink-0 group"
           >
@@ -346,10 +446,15 @@ export function App() {
               <button
                 key={item.id}
                 onClick={() => {
-                  setView(item.id as ViewMode);
                   setPage(1);
+                  const newSort = item.id === 'ranking' ? 'top-day' : item.id === 'home' ? 'latest' : sort;
                   if (item.id === 'ranking') setSort('top-day');
                   else if (item.id === 'home') setSort('latest');
+                  navigateTo({
+                    view: item.id as ViewMode,
+                    sort: newSort,
+                    libraryTab: item.id === 'library' ? libraryTab : undefined,
+                  });
                 }}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                   view === item.id
@@ -366,9 +471,10 @@ export function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              setActiveQuery(searchInput.trim());
-              setView('browse');
+              const q = searchInput.trim();
+              setActiveQuery(q);
               setPage(1);
+              navigateTo({ view: 'browse', q, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
             }}
             className="flex-1 max-w-xs relative"
           >
@@ -382,7 +488,7 @@ export function App() {
           </form>
 
           <button
-            onClick={() => setView('admin')}
+            onClick={() => navigateTo({ view: 'admin' })}
             title="Quản trị hệ thống"
             className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition shrink-0"
           >
@@ -468,7 +574,7 @@ export function App() {
               <button
                 onClick={() => {
                   setLibraryTab('history');
-                  setView('library');
+                  navigateTo({ view: 'library', libraryTab: 'history' });
                 }}
                 className="text-xs font-bold text-rose-400 hover:underline"
               >
@@ -533,6 +639,7 @@ export function App() {
                       setIncGenres([]);
                       setExcGenres([]);
                       setPage(1);
+                      navigateTo({ view: view === 'ranking' ? 'ranking' : 'browse', sort, status: statusFilter, page: 1 });
                     }}
                     className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 text-[11px] font-bold"
                   >
@@ -555,6 +662,7 @@ export function App() {
                         onClick={() => {
                           setSort(k);
                           setPage(1);
+                          navigateTo({ view: 'ranking', sort: k, page: 1 });
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                           sort === k ? 'bg-rose-500 text-white' : 'text-zinc-400 hover:text-white'
@@ -569,8 +677,10 @@ export function App() {
                     <select
                       value={statusFilter}
                       onChange={(e) => {
-                        setStatusFilter(e.target.value);
+                        const val = e.target.value;
+                        setStatusFilter(val);
                         setPage(1);
+                        navigateTo({ view: 'browse', q: activeQuery, sort, status: val, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
                       }}
                       className="px-3 py-2 rounded-xl bg-[#111119] border border-white/10 text-xs font-bold text-zinc-200"
                     >
@@ -579,7 +689,10 @@ export function App() {
                       <option value="completed">Đã hoàn thành</option>
                     </select>
                     <button
-                      onClick={() => setShowFilterModal(true)}
+                      onClick={() => {
+                        pushModalState('filter');
+                        setShowFilterModal(true);
+                      }}
                       className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
                         incGenres.length + excGenres.length > 0
                           ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
@@ -664,8 +777,10 @@ export function App() {
                 <button
                   disabled={page <= 1}
                   onClick={() => {
-                    setPage((p) => p - 1);
+                    const nextP = page - 1;
+                    setPage(nextP);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                    navigateTo({ view, q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: nextP, libraryTab });
                   }}
                   className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1"
                 >
@@ -677,8 +792,10 @@ export function App() {
                 <button
                   disabled={page >= totalPages}
                   onClick={() => {
-                    setPage((p) => p + 1);
+                    const nextP = page + 1;
+                    setPage(nextP);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                    navigateTo({ view, q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: nextP, libraryTab });
                   }}
                   className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1"
                 >
@@ -695,7 +812,10 @@ export function App() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/10">
                 <button
-                  onClick={() => setLibraryTab('bookmarks')}
+                  onClick={() => {
+                    setLibraryTab('bookmarks');
+                    navigateTo({ view: 'library', libraryTab: 'bookmarks' });
+                  }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
                     libraryTab === 'bookmarks' ? 'bg-rose-500 text-white' : 'text-zinc-400'
                   }`}
@@ -703,7 +823,10 @@ export function App() {
                   <Heart className="w-3.5 h-3.5" /> Đang theo dõi ({bookmarks.length})
                 </button>
                 <button
-                  onClick={() => setLibraryTab('history')}
+                  onClick={() => {
+                    setLibraryTab('history');
+                    navigateTo({ view: 'library', libraryTab: 'history' });
+                  }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
                     libraryTab === 'history' ? 'bg-rose-500 text-white' : 'text-zinc-400'
                   }`}
@@ -715,6 +838,7 @@ export function App() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
+                    pushModalState('backup');
                     setBackupModalOpen(true);
                     setBackupMsg('');
                     setImportText('');
@@ -802,7 +926,13 @@ export function App() {
         {view === 'detail' && (
           <section className="space-y-6">
             <button
-              onClick={() => setView('home')}
+              onClick={() => {
+                if (window.history.length > 1 && window.history.state?.fromApp) {
+                  window.history.back();
+                } else {
+                  navigateTo({ view: 'home' });
+                }
+              }}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-xs font-bold"
             >
               <ArrowLeft className="w-4 h-4" /> Quay lại
@@ -840,9 +970,10 @@ export function App() {
                       {selectedComic.author && (
                         <button
                           onClick={() => {
-                            setAuthorFilter(selectedComic.author!.slug);
-                            setView('browse');
+                            const authorSlug = selectedComic.author!.slug;
+                            setAuthorFilter(authorSlug);
                             setPage(1);
+                            navigateTo({ view: 'browse', author: authorSlug, sort, status: statusFilter, inc: incGenres, exc: excGenres, page: 1 });
                           }}
                           className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 font-bold hover:bg-sky-500/25"
                         >
@@ -898,8 +1029,8 @@ export function App() {
                             onClick={() => {
                               setIncGenres([g.slug]);
                               setExcGenres([]);
-                              setView('browse');
                               setPage(1);
+                              navigateTo({ view: 'browse', inc: [g.slug], sort, status: statusFilter, author: authorFilter, page: 1 });
                             }}
                             className="px-2.5 py-1 rounded-xl bg-white/[0.06] hover:bg-rose-500/20 hover:text-rose-300 text-[11px] font-bold text-zinc-300 transition"
                           >
@@ -1038,9 +1169,14 @@ export function App() {
           <button
             key={item.id}
             onClick={() => {
-              setView(item.id as ViewMode);
               setPage(1);
+              const newSort = item.id === 'ranking' ? 'top-day' : sort;
               if (item.id === 'ranking') setSort('top-day');
+              navigateTo({
+                view: item.id as ViewMode,
+                sort: newSort,
+                libraryTab: item.id === 'library' ? libraryTab : undefined,
+              });
             }}
             className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-bold transition ${
               view === item.id ? 'text-rose-400' : 'text-zinc-500'
@@ -1064,7 +1200,16 @@ export function App() {
                   <span className="text-rose-400 font-bold">Loại trừ</span> • Nhấn 3 lần: Bỏ chọn
                 </p>
               </div>
-              <button onClick={() => setShowFilterModal(false)} className="text-zinc-400 hover:text-white">
+              <button
+                onClick={() => {
+                  if (window.history.state?.modal === 'filter') {
+                    window.history.back();
+                  } else {
+                    setShowFilterModal(false);
+                  }
+                }}
+                className="text-zinc-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1104,9 +1249,14 @@ export function App() {
               </button>
               <button
                 onClick={() => {
-                  setShowFilterModal(false);
-                  setView('browse');
+                  if (window.history.state?.modal === 'filter') {
+                    window.history.back();
+                  } else {
+                    setShowFilterModal(false);
+                  }
                   setPage(1);
+                  replaceRoute({ view: 'browse', q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
+                  setView('browse');
                 }}
                 className="px-5 py-2 rounded-xl bg-rose-500 text-xs font-bold text-white"
               >
@@ -1123,7 +1273,16 @@ export function App() {
           <div className="w-full max-w-lg rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-base text-white">Sao lưu & Khôi phục Tủ truyện</h3>
-              <button onClick={() => setBackupModalOpen(false)} className="text-zinc-400 hover:text-white">
+              <button
+                onClick={() => {
+                  if (window.history.state?.modal === 'backup') {
+                    window.history.back();
+                  } else {
+                    setBackupModalOpen(false);
+                  }
+                }}
+                className="text-zinc-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
