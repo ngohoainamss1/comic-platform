@@ -840,6 +840,15 @@ export function App() {
                     />
                   </div>
                   <button
+                    onClick={() => {
+                      setGenreDropdownOpen(false);
+                      navigateTo({ view: 'genres-directory' });
+                    }}
+                    className="text-xs font-bold text-mag-400 hover:text-mag-500 underline whitespace-nowrap hidden sm:inline"
+                  >
+                    Trang thể loại chi tiết ↗
+                  </button>
+                  <button
                     onClick={() => setGenreDropdownOpen(false)}
                     className="text-xs text-txt-secondary hover:text-white p-2 rounded-lg bg-bgc-layer2"
                   >
@@ -915,6 +924,73 @@ export function App() {
 
       {/* ==================== MAIN CONTENT ==================== */}
       <main className="container-page mx-auto px-4 pt-4 md:pt-6 space-y-8">
+        {/* ==================== TRANG THỂ LOẠI CHI TIẾT (GENRES DIRECTORY) ==================== */}
+        {view === 'genres-directory' && (
+          <section className="space-y-6 max-w-5xl mx-auto pb-20">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-bd-default pb-4">
+              <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                <Filter className="w-6 h-6 text-lav-400" /> Tất cả thể loại truyện hentai
+              </h1>
+              <div className="relative w-full max-w-xs">
+                <Search className="w-4 h-4 text-txt-secondary absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={genreSearchQuery}
+                  onChange={(e) => setGenreSearchQuery(e.target.value)}
+                  placeholder="Tìm kiếm thể loại..."
+                  className="w-full pl-10 pr-4 py-2 rounded-full bg-bgc-layer2 border border-bd-default text-xs text-txt-primary outline-none focus:border-lav-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'].map((letter) => {
+                const matchedGenres = genres.filter((g) => {
+                  const nameLower = g.name.toLowerCase();
+                  const query = genreSearchQuery.trim().toLowerCase();
+                  if (query && !nameLower.includes(query)) return false;
+
+                  const first = g.name.charAt(0).toUpperCase();
+                  if (letter === '#') return !/[A-Z]/.test(first);
+                  return first === letter;
+                });
+                if (matchedGenres.length === 0) return null;
+
+                return (
+                  <div key={letter} className="space-y-3 p-4 rounded-2xl bg-bgc-layer1 border border-bd-default">
+                    <div className="text-lav-400 font-black text-lg border-b border-bd-default pb-1">
+                      {letter}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                      {matchedGenres.map((g) => {
+                        const active = incGenres.includes(g.slug);
+                        return (
+                          <button
+                            key={g.id}
+                            onClick={() => {
+                              setIncGenres([g.slug]);
+                              setExcGenres([]);
+                              setPage(1);
+                              navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
+                            }}
+                            className={`p-3 rounded-xl text-left text-sm font-semibold truncate transition border ${
+                              active
+                                ? 'border-lav-500 bg-lav-500/20 text-txt-focus'
+                                : 'border-bd-default bg-bgc-layer2 hover:border-lav-500 text-txt-primary'
+                            }`}
+                          >
+                            {g.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* ==================== TRANG TRIỆU HỒI (SUMMON / GACHAPON) ==================== */}
         {view === 'summon' && (
           <section className="space-y-6 max-w-4xl mx-auto pb-20">

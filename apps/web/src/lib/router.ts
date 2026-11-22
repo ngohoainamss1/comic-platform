@@ -1,4 +1,4 @@
-export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin' | 'summon' | 'profile';
+export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin' | 'summon' | 'profile' | 'genres-directory';
 export type ModalType = 'filter' | 'backup' | null;
 
 export interface RouteState {
@@ -18,6 +18,10 @@ export interface RouteState {
 export function parseRouteFromLocation(loc: Location = window.location): RouteState {
   const path = loc.pathname;
   const searchParams = new URLSearchParams(loc.search);
+
+  if (path === '/genres' || path === '/the-loai') {
+    return { view: 'genres-directory' };
+  }
 
   if (path === '/admin' || loc.hash === '#/admin') {
     return { view: 'admin' };
@@ -94,6 +98,8 @@ export function buildUrlFromRoute(route: RouteState): string {
   const params = new URLSearchParams();
 
   switch (route.view) {
+    case 'genres-directory':
+      return '/genres';
     case 'admin':
       return '/admin';
     case 'summon':
