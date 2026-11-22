@@ -288,7 +288,10 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         desc_el = soup.select_one(".detail-content p, .detail-content, .description, .summary, #summary")
         description = desc_el.get_text(" ", strip=True) if desc_el else ""
 
-        cover_el = soup.select_one(".detail-info .col-image img, .comic-cover img, .thumb img, .summary_image img")
+        cover_el = soup.select_one(
+            ".detail-info .col-image img, .comic-cover img, .thumb img, .summary_image img, "
+            "img[alt*='Bìa'], img[alt*='truyện'], img[alt*='Truyện'], .rounded-lg img, img.object-cover"
+        )
         cover_url = ""
         if cover_el:
             raw_cover = (
@@ -403,7 +406,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
 
         imgs: list[str] = []
         skip_keywords = (
-            "logo", "loading", "loader", "spinner", "icon", "banner",
+            "logo", "loading", "loader", "spinner", "icon",
             "ads", "advert", "donate", "credit", "avatar", "facebook",
             "zalo", "telegram", "discord", "qr", "placeholder", "1x1", "blank"
         )
@@ -450,7 +453,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             ".page-chapter img, .page-break img, .box-reading img, .content-chapter img, "
             ".container-chapter img, .list-img img, .chapter-imgs img, .img-chapter img, "
             "#chapter_content img, #chapter-content img, #vungdoc img, #vung-doc img, "
-            ".vung-doc img, .vung_doc img, #reader img, .viewer img, .comic-viewer img"
+            ".vung-doc img, .vung_doc img, #reader img, .viewer img, .comic-viewer img, "
+            "article img, main img, .container img, .content img"
         )
         for img in soup.select(reader_selectors):
             cands = [self._normalize_url(c, chapter_url) for c in _extract_candidates(img) if _is_valid(c)]
