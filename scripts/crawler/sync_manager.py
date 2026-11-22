@@ -964,6 +964,14 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
                 new_comics_log.append(detail.title)
                 print(f"[Tạo truyện mới] {detail.title} ({len(detail.chapters)} chương)")
 
+            if specific_chap_num is not None:
+                print(f"[Ép cào lại] Xóa dữ liệu cũ của chương {specific_chap_num:g} để cào mới...")
+                db_exec(
+                    db_state,
+                    "DELETE FROM chapters WHERE comic_id = ? AND chapter_number = ?",
+                    [comic_id, specific_chap_num],
+                )
+
             existing_nums = {
                 float(r[0])
                 for r in db_exec(db_state, "SELECT chapter_number FROM chapters WHERE comic_id = ?", [comic_id]).rows
