@@ -5,11 +5,15 @@ with open(r'C:\Users\Loki\Desktop\sub-agent\project\comic-platform\scripts\vina_
 
 lines = []
 for g in genres:
-    name_esc = g['name'].replace("'", "''")
-    slug_esc = g['slug'].replace("'", "''")
-    desc_esc = g['description'].replace("'", "''")
+    name = g['name']
+    slug = g['slug']
+    desc = g['description']
     count = g['comic_count']
-    lines.append(f"    await db.execute(\"INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES ('{slug_esc}', '{name_esc}', '{desc_esc}', {count})\");")
+    # Use JSON.stringify-like escaping in python for safety
+    name_js = json.dumps(name)
+    slug_js = json.dumps(slug)
+    desc_js = json.dumps(desc)
+    lines.append(f"    await db.execute(`INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES (${slug_js}, ${name_js}, ${desc_js}, ${count})`);")
 
 seed_code = "\n".join(lines)
 
@@ -17,22 +21,20 @@ migrate_path = r'C:\Users\Loki\Desktop\sub-agent\project\comic-platform\apps\wor
 with open(migrate_path, 'r', encoding='utf-8') as f:
     content = f.read()
 
-# Replace genre seeding section
-start_marker = "// Seed some popular genre descriptions"
+# Replace genre seeding section between comments or markers
+start_marker = "// Seed all VinaHentai genres with exact descriptions and comic counts"
 end_marker = "migrated = true;"
-
-new_section = f"""    // Seed all VinaHentai genres with exact descriptions and comic counts
-{seed_code}
-"""
 
 if start_marker in content:
     parts = content.split(start_marker)
-    new_content = parts[0] + new_section + "\n    " + parts[1].split(end_marker)[0] + end_marker + parts[1].split(end_marker)[1]
+    prefix = parts[0] + start_marker + "\n"
+    suffix = "\n    " + parts[1].split(end_marker)[1]
+    new_content = prefix + seed_code + "\n    " + end_marker + suffix
 else:
-    # Append before migrated = true
-    new_content = content.replace(end_marker, new_section + "\n    " + end_marker)
+    # Fallback replacement
+    new_content = content.replace(end_marker, f"    // Seed all VinaHentai genres with exact descriptions and comic counts\n{seed_code}\n    {end_marker}")
 
 with open(migrate_path, 'w', encoding='utf-8') as f:
     f.write(new_content)
 
-print("Successfully updated migrate.ts with all 224 genres!")
+print("Successfully updated migrate.ts using template literals and JSON.stringify escaping!")
