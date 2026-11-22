@@ -12,7 +12,7 @@
 html, body {
   scroll-behavior: smooth;
   color-scheme: dark;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
 
 body {
