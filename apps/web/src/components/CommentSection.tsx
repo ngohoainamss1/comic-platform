@@ -201,14 +201,17 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const formatTime = (iso: string) => {
-    const t = new Date(iso).getTime();
+    if (!iso) return '';
+    const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T');
+    const full = normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z';
+    const t = new Date(full).getTime();
     if (!Number.isFinite(t)) return '';
     const diff = Math.max(0, Math.floor((Date.now() - t) / 1000));
     if (diff < 60) return 'Vừa xong';
     if (diff < 3600) return `${Math.floor(diff / 60)}p trước`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h trước`;
     return `${Math.floor(diff / 86400)}d trước`;
-  };
+  };;
 
   const totalComments = comments.reduce((acc, c) => acc + 1 + c.replies.length, 0);
 

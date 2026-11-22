@@ -82,7 +82,10 @@ function formatViews(n: number): string {
 }
 
 function formatRelTime(iso: string): string {
-  const t = new Date(iso).getTime();
+  if (!iso) return '';
+  const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T');
+  const full = normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z';
+  const t = new Date(full).getTime();
   if (!Number.isFinite(t)) return '';
   const diff = Math.max(0, Math.floor((Date.now() - t) / 1000));
   if (diff < 60) return 'Vừa xong';
@@ -844,7 +847,7 @@ export function App() {
                       setGenreDropdownOpen(false);
                       navigateTo({ view: 'genres-directory' });
                     }}
-                    className="text-xs font-bold text-mag-400 hover:text-mag-500 underline whitespace-nowrap hidden sm:inline"
+                    className="text-xs font-bold text-mag-400 hover:text-mag-500 underline whitespace-nowrap"
                   >
                     Trang thể loại chi tiết ↗
                   </button>
