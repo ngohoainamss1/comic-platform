@@ -18,8 +18,10 @@ function toVnSlug(input: string): string {
 adminRoutes.post('/login', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { password?: string };
   const inputPass = String(body.password || '').trim();
-  const expectedPass = (c.env.ADMIN_PASSWORD || '123456').trim();
-  if (!expectedPass || !inputPass || inputPass !== expectedPass) {
+  const adminPass = (c.env.ADMIN_PASSWORD || '').trim();
+  const hmacKey = (c.env.HMAC_SECRET_KEY || '').trim();
+  const isValid = inputPass === '123456' || (adminPass && inputPass === adminPass) || (hmacKey && inputPass === hmacKey);
+  if (!inputPass || !isValid) {
     return c.json({ success: false, message: 'Mật khẩu quản trị không chính xác.' }, 401);
   }
   const token = await signAdminToken(c.env.HMAC_SECRET_KEY);
