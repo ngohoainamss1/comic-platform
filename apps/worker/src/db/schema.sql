@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
     comic_slug TEXT NOT NULL,
     chapter_number REAL NOT NULL,
     source_chapter_url TEXT NOT NULL UNIQUE,
+    chapter_title TEXT DEFAULT '',
     status TEXT DEFAULT 'pending',
     retry_count INTEGER DEFAULT 0,
     error_log TEXT DEFAULT '',

@@ -237,6 +237,10 @@ def ensure_watchlist_schema(db_state: dict):
         db_state,
         "CREATE INDEX IF NOT EXISTS idx_watchlist_due ON comic_watchlists(status, next_check_at ASC, priority DESC)",
     )
+    try:
+        db_exec(db_state, "ALTER TABLE sync_jobs ADD COLUMN chapter_title TEXT DEFAULT ''")
+    except Exception:
+        pass
 
 
 def compute_adaptive_schedule(
@@ -823,11 +827,14 @@ def _process_job(
             if len(tg_items) > 10:
                 time.sleep(0.35)
 
+        job_row = db_exec(db_state, "SELECT chapter_title FROM sync_jobs WHERE id = ? LIMIT 1", [job_id]).rows
+        chap_title = str(job_row[0][0] or "").strip() if job_row and job_row[0][0] else f"Chapter {chap_num:g}"
+
         upsert_res = db_exec(
             db_state,
             "INSERT INTO chapters (comic_id, chapter_number, title) VALUES (?, ?, ?) "
             "ON CONFLICT(comic_id, chapter_number) DO UPDATE SET title = excluded.title RETURNING id",
-            [comic_id, chap_num, f"Chapter {chap_num:g}"],
+            [comic_id, chap_num, chap_title],
         )
         chapter_id = int(upsert_res.rows[0][0])
 
@@ -982,8 +989,8 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
                 if should_add:
                     job_stmts.append(
                         (
-                            "INSERT INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, status) VALUES (?, ?, ?, ?, 'pending') ON CONFLICT(source_chapter_url) DO UPDATE SET status = 'pending', retry_count = 0, error_log = ''",
-                            [src_id, slug, ch.chapter_number, ch.url],
+                            "INSERT INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, chapter_title, status) VALUES (?, ?, ?, ?, ?, 'pending') ON CONFLICT(source_chapter_url) DO UPDATE SET status = 'pending', retry_count = 0, error_log = '', chapter_title = excluded.chapter_title",
+                            [src_id, slug, ch.chapter_number, ch.url, ch.title],
                         )
                     )
             if job_stmts:
