@@ -9,20 +9,40 @@
   --sar: env(safe-area-inset-right, 0px);
 }
 
-html, body {
+html,
+body {
   scroll-behavior: smooth;
   color-scheme: dark;
   overscroll-behavior-y: auto;
 }
 
 body {
-  background-color: #09090c;
+  background-color: #121318;
+  color: #f4f4f6;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
 }
 
-button, a {
+button,
+a {
   touch-action: manipulation;
+}
+
+.container-page {
+  width: 100%;
+  max-width: 1360px;
+}
+
+.hover-lift {
+  transition: transform 0.18s ease, filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+}
+
+.tap-44 {
+  min-height: 36px;
+  min-width: 36px;
 }
 
 .min-h-dvh {
@@ -61,25 +81,28 @@ button, a {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #09090c;
+  background: #121318;
 }
 ::-webkit-scrollbar-thumb {
-  background: #272732;
+  background: #2b2d3a;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #f43f5e;
+  background: #a855f7;
 }
 
-/* VIP Pro Max Animations & Overlays */
 @keyframes shimmer {
-  0% { background-position: -1000px 0; }
-  100% { background-position: 1000px 0; }
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
 }
 
 .animate-shimmer {
   animation: shimmer 2.5s infinite linear;
-  background: linear-gradient(to right, #161622 4%, #20202e 25%, #161622 36%);
+  background: linear-gradient(to right, #1b1c24 4%, #262834 25%, #1b1c24 36%);
   background-size: 1000px 100%;
 }
 

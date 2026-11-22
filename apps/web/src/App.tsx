@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   BookOpen,
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
-  Compass,
+  Copy,
   Download,
   Eye,
   Filter,
@@ -14,14 +15,19 @@ import {
   History,
   Home,
   Library,
+  LogOut,
   Megaphone,
+  Menu,
   Search,
   Shield,
+  Shuffle,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Trash2,
   Trophy,
   Upload,
+  UserPlus,
   Wrench,
   X,
 } from 'lucide-react';
@@ -55,15 +61,16 @@ import {
 import { getAvatarUrl } from './lib/memes';
 import {
   parseRouteFromLocation,
+  pushModalState,
   pushRoute,
   replaceRoute,
-  pushModalState,
   type RouteState,
   type ViewMode,
 } from './lib/router';
 import { ReaderView } from './components/ReaderView';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
+import { CommentSection } from './components/CommentSection';
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -90,7 +97,7 @@ export function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const [publicSettings, setPublicSettings] = useState<PublicSettings>({
-    site_name: 'VinaReader',
+    site_name: 'VinaHentai',
     announcement_enabled: '0',
     announcement_text: '',
     maintenance_mode: '0',
@@ -100,7 +107,13 @@ export function App() {
   // Dữ liệu chung
   const [genres, setGenres] = useState<GenreItem[]>([]);
   const [heroComics, setHeroComics] = useState<ComicSummary[]>([]);
-  const [heroIdx, setHeroIdx] = useState(0);
+  const [sidebarRanking, setSidebarRanking] = useState<ComicSummary[]>([]);
+  const [sidebarRankTab, setSidebarRankTab] = useState<'top-day' | 'top-week' | 'top-month'>('top-day');
+
+  // Navigation & Drawer states
+  const [genreDropdownOpen, setGenreDropdownOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
 
   // Danh sách truyện chính (Home / Browse / Ranking)
   const [comics, setComics] = useState<ComicSummary[]>([]);
@@ -125,6 +138,7 @@ export function App() {
   const [chapterSortAsc, setChapterSortAsc] = useState(false);
   const [userRatingHover, setUserRatingHover] = useState(0);
   const [ratedDone, setRatedDone] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [readerData, setReaderData] = useState<ChapterPagesPayload | null>(null);
 
   // Tủ truyện & Lịch sử
@@ -135,6 +149,8 @@ export function App() {
   const [backupMsg, setBackupMsg] = useState('');
 
   const navigateTo = (newRoute: RouteState, opts?: { replace?: boolean }) => {
+    setGenreDropdownOpen(false);
+    setMenuDrawerOpen(false);
     if (opts?.replace) {
       replaceRoute(newRoute);
     } else {
@@ -157,7 +173,8 @@ export function App() {
   const loadSettings = useCallback(async () => {
     const s = await fetchPublicSettings();
     setPublicSettings(s);
-    if (s.site_name) document.title = `${s.site_name} — Đọc Truyện Tranh Siêu Tốc`;
+    const titleBrand = s.site_name && s.site_name !== 'VinaReader' ? s.site_name : 'VinaHentai';
+    document.title = `${titleBrand} — Đọc Truyện Tranh Online Chất Lượng Cao`;
   }, []);
 
   useEffect(() => {
@@ -184,7 +201,7 @@ export function App() {
     }
   }, [initRoute]);
 
-  // Handle popstate (Back/Forward)
+  // Handle popstate
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       const state = e.state as { modal?: 'filter' | 'backup' } | null;
@@ -231,25 +248,26 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [selectedComic?.slug, readerData?.chapter.id]);
 
-  // Tải Hero Spotlight
+  // Tải Truyện Đề Cử (Featured Carousel)
   useEffect(() => {
     if (view !== 'home') return;
-    fetchComics({ featured: '1', limit: 6 })
+    fetchComics({ featured: '1', limit: 8 })
       .then((res) => {
         if (res.items.length > 0) setHeroComics(res.items);
-        else return fetchComics({ sort: 'top-week', limit: 6 }).then((fb) => setHeroComics(fb.items));
+        else return fetchComics({ sort: 'top-week', limit: 8 }).then((fb) => setHeroComics(fb.items));
       })
       .catch(() => {});
   }, [view]);
 
-  // Tự xoay Hero Banner mỗi 6.5s
+  // Tải BXH cột phải trang chủ
   useEffect(() => {
-    if (view !== 'home' || heroComics.length <= 1) return;
-    const t = window.setInterval(() => setHeroIdx((i) => (i + 1) % heroComics.length), 6500);
-    return () => window.clearInterval(t);
-  }, [view, heroComics.length]);
+    if (view !== 'home') return;
+    fetchComics({ sort: sidebarRankTab, limit: 10 })
+      .then((res) => setSidebarRanking(res.items))
+      .catch(() => {});
+  }, [view, sidebarRankTab]);
 
-  // Tải danh sách truyện theo bộ lọc
+  // Tải danh sách truyện chính
   useEffect(() => {
     if (view !== 'home' && view !== 'browse' && view !== 'ranking') return;
     setLoading(true);
@@ -276,6 +294,7 @@ export function App() {
     setDetailLoading(true);
     setChapterSearch('');
     setRatedDone(false);
+    setCopiedId(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     try {
       const detail = await fetchComicDetail(slug);
@@ -285,6 +304,22 @@ export function App() {
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const handleOpenRandom = async () => {
+    try {
+      const pool = comics.length > 0 ? comics : heroComics;
+      if (pool.length > 0) {
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        openComicDetail(pick.slug);
+        return;
+      }
+      const res = await fetchComics({ limit: 24 });
+      if (res.items.length > 0) {
+        const pick = res.items[Math.floor(Math.random() * res.items.length)];
+        openComicDetail(pick.slug);
+      }
+    } catch {}
   };
 
   const openChapter = async (chapterId: number, options?: { replace?: boolean }) => {
@@ -395,15 +430,18 @@ export function App() {
     );
   }
 
-  const activeHero = heroComics[heroIdx];
+  const brandName =
+    publicSettings.site_name && publicSettings.site_name !== 'VinaReader'
+      ? publicSettings.site_name
+      : 'VinaHentai';
 
   return (
-    <div className="min-h-dvh text-zinc-100 pb-[calc(5rem+var(--sab))] md:pb-12 selection:bg-rose-500/30">
-      {/* Thanh thông báo toàn trang từ Admin */}
+    <div className="min-h-dvh bg-[#121318] text-txt-primary pb-14 selection:bg-lav-500/30">
+      {/* Thanh thông báo từ Admin */}
       {publicSettings.announcement_enabled === '1' &&
         publicSettings.announcement_text &&
         !bannerDismissed && (
-          <div className="bg-gradient-to-r from-rose-600 via-pink-600 to-fuchsia-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 relative">
+          <div className="bg-gradient-to-r from-lav-600 via-lav-500 to-mag-500 text-white px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 relative">
             <Megaphone className="w-3.5 h-3.5 shrink-0" />
             <span className="text-center">{publicSettings.announcement_text}</span>
             <button
@@ -415,235 +453,461 @@ export function App() {
           </div>
         )}
 
-      {/* Chế độ bảo trì */}
+      {/* Cảnh báo bảo trì */}
       {publicSettings.maintenance_mode === '1' && (
         <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-200 px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2">
           <Wrench className="w-3.5 h-3.5" /> Hệ thống đang bảo trì nâng cấp nhẹ. Một số chương có thể cập nhật chậm.
         </div>
       )}
 
-      {/* Header Glassmorphism */}
-      <header className="sticky top-0 z-40 bg-[#09090f]/80 backdrop-blur-2xl border-b border-white/[0.07] pt-safe px-safe">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-          <button
-            onClick={() => {
-              setActiveQuery('');
-              setSearchInput('');
-              setAuthorFilter('');
-              setIncGenres([]);
-              setExcGenres([]);
-              setSort('latest');
-              setPage(1);
-              navigateTo({ view: 'home' });
-            }}
-            className="flex items-center gap-2.5 shrink-0 group"
-          >
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shadow-lg shadow-rose-500/30 group-hover:scale-105 transition">
-              <BookOpen className="w-5 h-5 text-white" />
+      {/* ==================== HEADER VINAHENTAI ==================== */}
+      <header className="flex w-full flex-col sticky top-0 z-40">
+        <div className="bg-bgc-header md:bg-bgc-header-md relative z-20 pt-safe">
+          {/* Tầng 1: Logo + Search + Nâng cao + Auth + Menu */}
+          <div className="relative flex items-center justify-between self-stretch px-0 pt-2.5 pb-1.5 md:pb-2">
+            {/* Desktop Header */}
+            <div className="hidden w-full lg:block">
+              <div className="container-page mx-auto grid grid-cols-[minmax(max-content,1fr)_minmax(240px,500px)_minmax(max-content,1fr)] items-center gap-x-6 px-4">
+                {/* Logo */}
+                <div className="flex items-center justify-self-start">
+                  <button
+                    onClick={() => {
+                      setActiveQuery('');
+                      setSearchInput('');
+                      setAuthorFilter('');
+                      setIncGenres([]);
+                      setExcGenres([]);
+                      setStatusFilter('all');
+                      setSort('latest');
+                      setPage(1);
+                      navigateTo({ view: 'home' });
+                    }}
+                    className="flex items-center gap-2 cursor-pointer group"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-lav-500 to-mag-500 flex items-center justify-center shadow-lg shadow-lav-500/25 group-hover:scale-105 transition">
+                      <BookOpen className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-xl font-extrabold tracking-tight text-white">
+                      {brandName === 'VinaHentai' ? (
+                        <>
+                          Vina<span className="bg-gradient-to-r from-lav-400 to-mag-400 bg-clip-text text-transparent">Hentai</span>
+                        </>
+                      ) : (
+                        brandName
+                      )}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search Pill + Nâng cao */}
+                <div className="flex w-full min-w-0 items-center gap-2.5">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const q = searchInput.trim();
+                      setActiveQuery(q);
+                      setPage(1);
+                      navigateTo({
+                        view: 'browse',
+                        q,
+                        sort,
+                        status: statusFilter,
+                        author: authorFilter,
+                        inc: incGenres,
+                        exc: excGenres,
+                        page: 1,
+                      });
+                    }}
+                    className="group bg-bgc-layer2 border-bd-strong focus-within:border-lav-500 flex w-full items-stretch overflow-hidden rounded-full border focus-within:ring-1 focus-within:ring-lav-500"
+                  >
+                    <input
+                      type="text"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      placeholder="Tìm truyện hoặc mã..."
+                      className="text-txt-secondary placeholder:text-txt-secondary focus:text-txt-primary flex-1 bg-transparent px-4 py-1.5 text-sm leading-normal font-medium outline-none"
+                    />
+                    <button
+                      type="submit"
+                      aria-label="Tìm kiếm"
+                      className="flex w-12 flex-shrink-0 items-center justify-center border-l border-bd-strong bg-bgc-layer1/40 hover:bg-lav-500/20 text-txt-secondary hover:text-lav-400 transition-colors"
+                    >
+                      <Search className="w-4 h-4" />
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushModalState('filter');
+                      setShowFilterModal(true);
+                    }}
+                    aria-label="Mở tìm kiếm nâng cao"
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-lav-500 bg-bgc-layer2/80 hover:bg-lav-500/15 px-3.5 py-1.5 text-xs font-semibold text-txt-focus transition"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-lav-400" />
+                    <span>Nâng cao</span>
+                  </button>
+                </div>
+
+                {/* Auth & Menu Button */}
+                <div className="flex items-center justify-self-end whitespace-nowrap">
+                  <div className="flex items-center justify-start gap-2.5">
+                    {currentUser ? (
+                      <>
+                        <button
+                          onClick={() => navigateTo({ view: 'library', libraryTab: 'bookmarks' })}
+                          className="inline-flex items-center gap-2 rounded-xl border border-bd-default bg-bgc-layer2 hover:border-lav-500 px-3 py-1.5 text-xs font-semibold text-txt-primary transition"
+                        >
+                          <img
+                            src={getAvatarUrl(currentUser.avatar_seed, currentUser.username)}
+                            alt={currentUser.display_name}
+                            className="w-5 h-5 rounded-full object-cover"
+                          />
+                          <span>{currentUser.display_name}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setUserToken('');
+                            setCurrentUser(null);
+                          }}
+                          className="hover-lift inline-flex h-[36px] items-center justify-center gap-1.5 rounded-xl border border-bd-default bg-bgc-layer2 hover:border-rose-500/50 px-3 text-xs font-semibold text-txt-secondary hover:text-rose-400"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Thoát</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setAuthModalOpen(true)}
+                          className="hover-lift inline-flex h-[36px] items-center justify-center gap-2 rounded-xl border border-bd-default bg-bgc-layer2 hover:border-lav-500 px-3.5 text-xs font-semibold text-txt-primary"
+                        >
+                          Đăng nhập
+                        </button>
+                        <button
+                          onClick={() => setAuthModalOpen(true)}
+                          className="hover-lift inline-flex h-[36px] items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 px-3.5 text-xs font-semibold text-white shadow-md shadow-lav-500/20"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Đăng ký
+                        </button>
+                      </>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setMenuDrawerOpen(true)}
+                      aria-label="Mở menu"
+                      className="tap-44 border-bd-default bg-bgc-layer2 hover:border-lav-500 inline-flex h-[36px] w-[36px] items-center justify-center rounded-xl border text-txt-primary transition"
+                    >
+                      <Menu className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="font-black text-lg tracking-tight bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-              {publicSettings.site_name || 'VinaReader'}
-            </span>
-          </button>
 
-          {/* Menu Desktop */}
-          <nav className="hidden md:flex items-center gap-1">
-            {[
-              { id: 'home', label: 'Trang chủ', icon: <Home className="w-4 h-4" /> },
-              { id: 'browse', label: 'Khám phá', icon: <Compass className="w-4 h-4" /> },
-              { id: 'ranking', label: 'Bảng xếp hạng', icon: <Trophy className="w-4 h-4" /> },
-              { id: 'library', label: 'Tủ truyện', icon: <Library className="w-4 h-4" /> },
-            ].map((item) => (
+            {/* Mobile Header */}
+            <div className="flex w-full items-center justify-between px-4 sm:px-6 lg:hidden">
               <button
-                key={item.id}
                 onClick={() => {
+                  setActiveQuery('');
+                  setSearchInput('');
                   setPage(1);
-                  const newSort = item.id === 'ranking' ? 'top-day' : item.id === 'home' ? 'latest' : sort;
-                  if (item.id === 'ranking') setSort('top-day');
-                  else if (item.id === 'home') setSort('latest');
-                  navigateTo({
-                    view: item.id as ViewMode,
-                    sort: newSort,
-                    libraryTab: item.id === 'library' ? libraryTab : undefined,
-                  });
+                  navigateTo({ view: 'home' });
                 }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                  view === item.id
-                    ? 'bg-white/10 text-white'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
+                className="flex items-center gap-2"
               >
-                {item.icon} {item.label}
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-lav-500 to-mag-500 flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-lg font-extrabold tracking-tight text-white">
+                  Vina<span className="text-lav-400">Hentai</span>
+                </span>
               </button>
-            ))}
-          </nav>
 
-          {/* Thanh tìm kiếm */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const q = searchInput.trim();
-              setActiveQuery(q);
-              setPage(1);
-              navigateTo({ view: 'browse', q, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
-            }}
-            className="flex-1 max-w-xs relative"
-          >
-            <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Tìm truyện..."
-              className="w-full pl-9 pr-3 py-2 rounded-2xl bg-white/[0.06] border border-white/10 text-xs sm:text-xs text-white placeholder:text-zinc-500 outline-none focus:border-rose-500/60 focus:bg-white/[0.09] transition"
-            />
-          </form>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {currentUser ? (
               <div className="flex items-center gap-2">
-                <img
-                  src={getAvatarUrl(currentUser.avatar_seed, currentUser.username)}
-                  alt={currentUser.display_name}
-                  className="w-8 h-8 rounded-xl bg-zinc-900 border border-white/15 p-0.5"
-                />
-                <span className="hidden sm:inline text-xs font-bold text-zinc-200">{currentUser.display_name}</span>
                 <button
-                  onClick={() => {
-                    setUserToken('');
-                    setCurrentUser(null);
-                  }}
-                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-xs font-bold text-zinc-400 hover:text-rose-300 transition"
-                  title="Đăng xuất"
+                  type="button"
+                  onClick={() => setMobileSearchOpen((v) => !v)}
+                  aria-label="Tìm truyện"
+                  className="tap-44 flex items-center justify-center rounded-xl border border-bd-default bg-bgc-layer2 text-txt-primary"
                 >
-                  Đăng xuất
+                  <Search className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMenuDrawerOpen(true)}
+                  aria-label="Mở menu"
+                  className="tap-44 flex items-center justify-center rounded-xl border border-bd-default bg-bgc-layer2 text-txt-primary"
+                >
+                  <Menu className="w-4 h-4" />
                 </button>
               </div>
-            ) : (
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-xs font-bold text-white shadow-md shadow-rose-500/20 hover:brightness-110 transition"
-              >
-                Đăng nhập
-              </button>
-            )}
-
-            <button
-              onClick={() => navigateTo({ view: 'admin' })}
-              title="Quản trị hệ thống"
-              className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
-            >
-              <Shield className="w-4 h-4" />
-            </button>
+            </div>
           </div>
+
+          {/* Mobile Search Bar Expand */}
+          {mobileSearchOpen && (
+            <div className="px-4 pb-2.5 lg:hidden">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const q = searchInput.trim();
+                  setActiveQuery(q);
+                  setPage(1);
+                  setMobileSearchOpen(false);
+                  navigateTo({ view: 'browse', q, sort, status: statusFilter, page: 1 });
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className="bg-bgc-layer2 border-bd-strong focus-within:border-lav-500 flex flex-1 items-stretch overflow-hidden rounded-full border">
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Tìm truyện hoặc mã..."
+                    className="flex-1 bg-transparent px-4 py-1.5 text-xs text-txt-primary outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 border-l border-bd-strong text-txt-secondary hover:text-lav-400"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushModalState('filter');
+                    setShowFilterModal(true);
+                  }}
+                  className="rounded-full border border-lav-500 bg-bgc-layer2 px-3 py-1.5 text-xs font-semibold text-txt-focus"
+                >
+                  Nâng cao
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Tầng 2: Thanh điều hướng tab ngang (Trang chủ | Thể loại | BXH | Hoàn thành | Random | Tủ truyện) */}
+          <nav
+            aria-label="Điều hướng chính"
+            className="no-scrollbar relative z-30 flex w-full overflow-x-auto px-3 pt-1"
+          >
+            <div className="mx-auto flex shrink-0 items-end gap-5 sm:gap-7">
+              <button
+                onClick={() => {
+                  setActiveQuery('');
+                  setStatusFilter('all');
+                  setIncGenres([]);
+                  setExcGenres([]);
+                  setSort('latest');
+                  setPage(1);
+                  navigateTo({ view: 'home' });
+                }}
+                className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  view === 'home' && statusFilter === 'all' && incGenres.length === 0
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <Home className="w-3.5 h-3.5" />
+                <span>Trang chủ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGenreDropdownOpen((v) => !v)}
+                className={`relative inline-flex shrink-0 items-center gap-1 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  genreDropdownOpen || incGenres.length > 0
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <span>Thể loại</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${genreDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <button
+                onClick={() => {
+                  setPage(1);
+                  setSort('top-day');
+                  navigateTo({ view: 'ranking', sort: 'top-day', page: 1 });
+                }}
+                className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  view === 'ranking'
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>BXH</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setStatusFilter('completed');
+                  setPage(1);
+                  navigateTo({ view: 'browse', status: 'completed', sort: 'latest', page: 1 });
+                }}
+                className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  view === 'browse' && statusFilter === 'completed'
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <span>Hoàn thành</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenRandom}
+                className="relative inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent pb-2 pt-1 text-xs sm:text-sm font-semibold text-txt-secondary hover:text-lav-400 transition"
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+                <span>Random</span>
+              </button>
+
+              <button
+                onClick={() => navigateTo({ view: 'library', libraryTab })}
+                className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
+                  view === 'library'
+                    ? 'border-lav-500 text-lav-400'
+                    : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                <Library className="w-3.5 h-3.5" />
+                <span>Tủ truyện</span>
+              </button>
+            </div>
+          </nav>
+
+          {/* Đường kẻ đáy Header */}
+          <div className="bg-bd-strong h-[1px] w-full lg:bg-white/10" />
+
+          {/* Mega Dropdown Thể loại */}
+          {genreDropdownOpen && (
+            <div className="border-b border-bd-strong bg-bgc-layer1/98 backdrop-blur-xl shadow-2xl">
+              <div className="container-page mx-auto px-4 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-txt-focus">
+                    Danh sách thể loại ({genres.length})
+                  </span>
+                  <button
+                    onClick={() => setGenreDropdownOpen(false)}
+                    className="text-xs text-txt-secondary hover:text-white flex items-center gap-1"
+                  >
+                    <X className="w-3.5 h-3.5" /> Đóng
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5 max-h-64 overflow-y-auto">
+                  {genres.map((g) => {
+                    const active = incGenres.includes(g.slug);
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => {
+                          setIncGenres([g.slug]);
+                          setExcGenres([]);
+                          setPage(1);
+                          navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-left text-xs font-medium truncate border transition ${
+                          active
+                            ? 'border-lav-500 bg-lav-500/20 text-txt-focus'
+                            : 'border-transparent hover:border-bd-default hover:bg-bgc-layer2 text-txt-secondary hover:text-txt-primary'
+                        }`}
+                      >
+                        {g.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 pt-5 space-y-8">
-        {/* ==================== HOME: HERO SPOTLIGHT + CONTINUE READING ==================== */}
-        {view === 'home' && activeHero && (
-          <section className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#111119] min-h-[280px] sm:min-h-[340px] flex items-end shadow-2xl">
-            <img
-              src={resolveAssetUrl(activeHero.cover_url)}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-35"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#07070b] via-[#07070b]/65 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#07070b]/95 via-[#07070b]/50 to-transparent" />
-
-            <div className="relative z-10 w-full p-5 sm:p-8 flex flex-col sm:flex-row items-start sm:items-end gap-5">
-              <img
-                src={resolveAssetUrl(activeHero.cover_url)}
-                alt={activeHero.title}
-                onClick={() => openComicDetail(activeHero.slug)}
-                className="w-28 sm:w-40 aspect-[2/3] object-cover rounded-2xl shadow-2xl border border-white/15 cursor-pointer hover:scale-[1.03] transition shrink-0"
-              />
-              <div className="flex-1 min-w-0 space-y-2.5">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] font-extrabold">
-                  <Sparkles className="w-3 h-3" /> ĐỀ CỬ NỔI BẬT
-                </div>
-                <h2
-                  onClick={() => openComicDetail(activeHero.slug)}
-                  className="text-2xl sm:text-4xl font-black text-white leading-tight line-clamp-2 cursor-pointer hover:text-rose-400 transition"
+      {/* ==================== MAIN CONTENT ==================== */}
+      <main className="container-page mx-auto px-4 pt-4 md:pt-6 space-y-8">
+        {/* ==================== TRANG CHỦ: TRUYỆN ĐỀ CỬ ==================== */}
+        {view === 'home' && heroComics.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base sm:text-lg font-bold uppercase tracking-wide text-txt-primary flex items-center gap-2 border-l-4 border-lav-500 pl-3">
+                <Sparkles className="w-4 h-4 text-lav-400" /> Truyện Đề Cử
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              {heroComics.map((hc) => (
+                <article
+                  key={hc.id}
+                  onClick={() => openComicDetail(hc.slug)}
+                  className="group cursor-pointer relative aspect-[2/3] rounded-lg overflow-hidden border border-bd-default hover:border-lav-500 bg-bgc-layer1 shadow-md transition"
                 >
-                  {activeHero.title}
-                </h2>
-                {activeHero.description && (
-                  <p className="text-xs sm:text-sm text-zinc-300 line-clamp-2 max-w-2xl">
-                    {activeHero.description}
-                  </p>
-                )}
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  <button
-                    onClick={() => openComicDetail(activeHero.slug)}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 text-xs sm:text-sm font-extrabold text-white shadow-lg shadow-rose-500/30 transition"
-                  >
-                    Đọc ngay
-                  </button>
-                  <span className="text-xs font-bold text-zinc-300 flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> {activeHero.rating_avg.toFixed(1)}
+                  <img
+                    src={resolveAssetUrl(hc.cover_url)}
+                    alt={hc.title}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
+                  <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-lav-500/90 text-[10px] font-bold text-white">
+                    HOT
                   </span>
-                  <span className="text-xs font-bold text-zinc-400 flex items-center gap-1">
-                    <Eye className="w-3.5 h-3.5" /> {formatViews(activeHero.views_total)}
-                  </span>
-                </div>
-              </div>
-
-              {heroComics.length > 1 && (
-                <div className="flex items-center gap-1.5 self-end">
-                  {heroComics.map((hc, idx) => (
-                    <button
-                      key={hc.id}
-                      onClick={() => setHeroIdx(idx)}
-                      className={`h-1.5 rounded-full transition-all ${
-                        idx === heroIdx ? 'w-7 bg-rose-500' : 'w-2 bg-white/25 hover:bg-white/50'
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
+                  <div className="absolute bottom-2 inset-x-2 space-y-0.5">
+                    <h3 className="text-xs font-semibold text-white line-clamp-2 group-hover:text-lav-400 transition leading-snug">
+                      {hc.title}
+                    </h3>
+                    <p className="text-[11px] font-medium text-txt-focus">
+                      {hc.latest_chapter !== null ? `Chap ${hc.latest_chapter}` : 'Mới'}
+                    </p>
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
         )}
 
-        {/* Dải Tiếp tục đọc (Continue Reading) */}
+        {/* Dải Tiếp tục đọc */}
         {view === 'home' && historyList.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-rose-400" /> Tiếp tục đọc
+              <h3 className="text-sm sm:text-base font-bold uppercase text-txt-primary flex items-center gap-2 border-l-4 border-mag-500 pl-3">
+                <Clock className="w-4 h-4 text-mag-400" /> Lịch sử đọc gần đây
               </h3>
               <button
-                onClick={() => {
-                  setLibraryTab('history');
-                  navigateTo({ view: 'library', libraryTab: 'history' });
-                }}
-                className="text-xs font-bold text-rose-400 hover:underline"
+                onClick={() => navigateTo({ view: 'library', libraryTab: 'history' })}
+                className="text-xs font-semibold text-lav-400 hover:underline"
               >
                 Xem tất cả
               </button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
               {historyList.slice(0, 8).map((h) => {
                 const pct =
-                  h.total_pages && h.progress ? Math.min(100, Math.round((h.progress / h.total_pages) * 100)) : 0;
+                  h.total_pages && h.progress ? Math.min(100, Math.round((h.progress / h.total_pages) * 100)) : 10;
                 return (
                   <button
                     key={h.slug}
                     onClick={() => openChapter(h.chapter_id)}
-                    className="w-60 shrink-0 rounded-2xl bg-[#111119] border border-white/[0.08] hover:border-rose-500/40 p-2.5 flex items-center gap-3 text-left transition group"
+                    className="w-60 shrink-0 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 p-2.5 flex items-center gap-3 text-left transition group"
                   >
                     <img
                       src={resolveAssetUrl(h.cover_url)}
                       alt={h.title}
-                      className="w-12 h-16 rounded-xl object-cover bg-zinc-900 shrink-0"
+                      className="w-11 h-16 rounded object-cover bg-bgc-layer2 shrink-0"
                     />
                     <div className="flex-1 min-w-0 space-y-1">
-                      <p className="text-xs font-bold text-white truncate group-hover:text-rose-400 transition">
+                      <p className="text-xs font-semibold text-txt-primary truncate group-hover:text-lav-400 transition">
                         {h.title}
                       </p>
-                      <p className="text-[11px] font-semibold text-rose-400">Đọc tiếp Ch.{h.chapter_number}</p>
+                      <p className="text-[11px] font-medium text-mag-400">Đọc tiếp Chap {h.chapter_number}</p>
                       <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full bg-rose-500 rounded-full" style={{ width: `${Math.max(10, pct)}%` }} />
+                        <div className="h-full bg-lav-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   </button>
@@ -653,212 +917,341 @@ export function App() {
           </section>
         )}
 
-        {/* ==================== HOME / BROWSE / RANKING GRID ==================== */}
+        {/* ==================== TRANG CHỦ (2 CỘT) / BROWSE / RANKING ==================== */}
         {(view === 'home' || view === 'browse' || view === 'ranking') && (
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                  {view === 'ranking' ? (
-                    <>
-                      <Flame className="w-5 h-5 text-orange-400" /> Bảng Xếp Hạng
-                    </>
-                  ) : activeQuery ? (
-                    <>Kết quả cho "{activeQuery}"</>
-                  ) : authorFilter ? (
-                    <>Tác giả: {authorFilter}</>
-                  ) : (
-                    <>Mới cập nhật</>
-                  )}
-                </h2>
-                {(activeQuery || authorFilter || incGenres.length > 0 || excGenres.length > 0) && (
-                  <button
-                    onClick={() => {
-                      setActiveQuery('');
-                      setSearchInput('');
-                      setAuthorFilter('');
-                      setIncGenres([]);
-                      setExcGenres([]);
-                      setPage(1);
-                      navigateTo({ view: view === 'ranking' ? 'ranking' : 'browse', sort, status: statusFilter, page: 1 });
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 text-[11px] font-bold"
-                  >
-                    Xóa lọc
-                  </button>
-                )}
-              </div>
+          <div className={view === 'home' ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' : 'space-y-4'}>
+            {/* Cột chính (8 cột ở Home, full ở Browse/Ranking) */}
+            <section className={view === 'home' ? 'lg:col-span-8 space-y-4' : 'space-y-4'}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold uppercase tracking-wide text-txt-primary flex items-center gap-2 border-l-4 border-lav-500 pl-3">
+                    {view === 'ranking' ? (
+                      <>
+                        <Flame className="w-5 h-5 text-mag-400" /> Bảng Xếp Hạng
+                      </>
+                    ) : activeQuery ? (
+                      <>Tìm kiếm: "{activeQuery}"</>
+                    ) : authorFilter ? (
+                      <>Tác giả: {authorFilter}</>
+                    ) : statusFilter === 'completed' ? (
+                      <>Truyện Đã Hoàn Thành</>
+                    ) : (
+                      <>Truyện Mới Cập Nhật</>
+                    )}
+                  </h2>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {view === 'ranking' ? (
-                  <div className="flex bg-white/[0.05] p-1 rounded-xl border border-white/10">
-                    {[
-                      ['top-day', 'Top Ngày'],
-                      ['top-week', 'Top Tuần'],
-                      ['top-month', 'Top Tháng'],
-                      ['rating', 'Đánh giá'],
-                    ].map(([k, label]) => (
-                      <button
-                        key={k}
-                        onClick={() => {
-                          setSort(k);
+                  {(activeQuery || authorFilter || incGenres.length > 0 || excGenres.length > 0) && (
+                    <button
+                      onClick={() => {
+                        setActiveQuery('');
+                        setSearchInput('');
+                        setAuthorFilter('');
+                        setIncGenres([]);
+                        setExcGenres([]);
+                        setPage(1);
+                        navigateTo({
+                          view: view === 'ranking' ? 'ranking' : 'browse',
+                          sort,
+                          status: statusFilter,
+                          page: 1,
+                        });
+                      }}
+                      className="px-2.5 py-1 rounded-md bg-lav-500/20 text-txt-focus text-xs font-semibold"
+                    >
+                      Xóa lọc
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {view === 'ranking' ? (
+                    <div className="flex bg-bgc-layer1 p-1 rounded-lg border border-bd-default">
+                      {[
+                        ['top-day', 'Top Ngày'],
+                        ['top-week', 'Top Tuần'],
+                        ['top-month', 'Top Tháng'],
+                        ['rating', 'Đánh giá'],
+                      ].map(([k, label]) => (
+                        <button
+                          key={k}
+                          onClick={() => {
+                            setSort(k);
+                            setPage(1);
+                            navigateTo({ view: 'ranking', sort: k, page: 1 });
+                          }}
+                          className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
+                            sort === k ? 'bg-lav-500 text-white' : 'text-txt-secondary hover:text-txt-primary'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setStatusFilter(val);
                           setPage(1);
-                          navigateTo({ view: 'ranking', sort: k, page: 1 });
+                          navigateTo({
+                            view: 'browse',
+                            q: activeQuery,
+                            sort,
+                            status: val,
+                            author: authorFilter,
+                            inc: incGenres,
+                            exc: excGenres,
+                            page: 1,
+                          });
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                          sort === k ? 'bg-rose-500 text-white' : 'text-zinc-400 hover:text-white'
+                        className="px-3 py-1.5 rounded-lg bg-bgc-layer1 border border-bd-default text-xs font-medium text-txt-primary outline-none focus:border-lav-500"
+                      >
+                        <option value="all">Tất cả tình trạng</option>
+                        <option value="ongoing">Đang tiến hành</option>
+                        <option value="completed">Hoàn thành</option>
+                      </select>
+
+                      <button
+                        onClick={() => {
+                          pushModalState('filter');
+                          setShowFilterModal(true);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                          incGenres.length + excGenres.length > 0
+                            ? 'bg-lav-500/20 border-lav-500 text-txt-focus'
+                            : 'bg-bgc-layer1 border-bd-default text-txt-secondary hover:text-txt-primary'
                         }`}
                       >
-                        {label}
+                        <Filter className="w-3.5 h-3.5" />
+                        Lọc nâng cao
+                        {incGenres.length + excGenres.length > 0 && ` (${incGenres.length + excGenres.length})`}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {loading ? (
+                <div
+                  className={
+                    view === 'home'
+                      ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5'
+                      : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4'
+                  }
+                >
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div key={i} className="space-y-2 animate-pulse">
+                      <div className="aspect-[2/3] rounded-lg bg-bgc-layer1" />
+                      <div className="h-3.5 w-4/5 rounded bg-bgc-layer1" />
+                    </div>
+                  ))}
+                </div>
+              ) : comics.length === 0 ? (
+                <div className="py-16 text-center rounded-lg bg-bgc-layer1 border border-bd-default text-txt-secondary text-sm">
+                  Không tìm thấy bộ truyện nào phù hợp.
+                </div>
+              ) : (
+                <div
+                  className={
+                    view === 'home'
+                      ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5'
+                      : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4'
+                  }
+                >
+                  {comics.map((comic, idx) => (
+                    <article
+                      key={comic.id}
+                      onClick={() => openComicDetail(comic.slug)}
+                      className="group cursor-pointer rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500/70 overflow-hidden transition flex flex-col"
+                    >
+                      <div className="relative aspect-[2/3] overflow-hidden bg-bgc-layer2">
+                        <img
+                          src={resolveAssetUrl(comic.cover_url)}
+                          alt={comic.title}
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/90 to-transparent" />
+
+                        {view === 'ranking' && page === 1 && idx < 3 && (
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-gradient-to-r from-lav-500 to-mag-500 text-white font-bold text-[11px] shadow">
+                            TOP {idx + 1}
+                          </span>
+                        )}
+
+                        {comic.status === 'completed' && (
+                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-emerald-500/90 text-[10px] font-bold text-black">
+                            FULL
+                          </span>
+                        )}
+
+                        <div className="absolute bottom-1.5 inset-x-2 flex items-center justify-between text-[11px] text-zinc-200">
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-3 h-3 text-lav-400" /> {formatViews(comic.views_total)}
+                          </span>
+                          <span className="flex items-center gap-0.5 text-amber-400">
+                            <Star className="w-3 h-3 fill-amber-400" /> {comic.rating_avg.toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 flex-1 flex flex-col justify-between space-y-1.5">
+                        <h3 className="text-xs sm:text-sm font-semibold text-txt-primary line-clamp-2 group-hover:text-lav-400 transition leading-snug">
+                          {comic.title}
+                        </h3>
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
+                          <span className="font-medium text-txt-focus">
+                            {comic.latest_chapter !== null ? `Chap ${comic.latest_chapter}` : 'Đang cập nhật'}
+                          </span>
+                          <span className="text-txt-secondary">{formatRelTime(comic.updated_at)}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {/* Phân trang */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-3">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => {
+                      const nextP = page - 1;
+                      setPage(nextP);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      navigateTo({
+                        view,
+                        q: activeQuery,
+                        sort,
+                        status: statusFilter,
+                        author: authorFilter,
+                        inc: incGenres,
+                        exc: excGenres,
+                        page: nextP,
+                        libraryTab,
+                      });
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 disabled:opacity-35 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Trước
+                  </button>
+                  <span className="px-4 py-2 rounded-lg bg-lav-500 text-white text-xs font-bold">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => {
+                      const nextP = page + 1;
+                      setPage(nextP);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      navigateTo({
+                        view,
+                        q: activeQuery,
+                        sort,
+                        status: statusFilter,
+                        author: authorFilter,
+                        inc: incGenres,
+                        exc: excGenres,
+                        page: nextP,
+                        libraryTab,
+                      });
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 disabled:opacity-35 text-xs font-semibold flex items-center gap-1"
+                  >
+                    Sau <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </section>
+
+            {/* Cột phải Trang chủ: Bảng Xếp Hạng Top 10 */}
+            {view === 'home' && (
+              <aside className="lg:col-span-4 space-y-4">
+                <div className="rounded-lg bg-bgc-layer1 border border-bd-default overflow-hidden">
+                  <div className="grid grid-cols-3 border-b border-bd-default bg-bgc-layer2/60">
+                    {(
+                      [
+                        ['top-day', 'Top Ngày'],
+                        ['top-week', 'Top Tuần'],
+                        ['top-month', 'Top Tháng'],
+                      ] as const
+                    ).map(([tabKey, tabLabel]) => (
+                      <button
+                        key={tabKey}
+                        onClick={() => setSidebarRankTab(tabKey)}
+                        className={`py-2.5 text-xs font-bold border-b-2 transition ${
+                          sidebarRankTab === tabKey
+                            ? 'border-lav-500 text-lav-400 bg-lav-500/10'
+                            : 'border-transparent text-txt-secondary hover:text-txt-primary'
+                        }`}
+                      >
+                        {tabLabel}
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setStatusFilter(val);
-                        setPage(1);
-                        navigateTo({ view: 'browse', q: activeQuery, sort, status: val, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
-                      }}
-                      className="px-3 py-2 rounded-xl bg-[#111119] border border-white/10 text-xs font-bold text-zinc-200"
-                    >
-                      <option value="all">Mọi trạng thái</option>
-                      <option value="ongoing">Đang tiến hành</option>
-                      <option value="completed">Đã hoàn thành</option>
-                    </select>
-                    <button
-                      onClick={() => {
-                        pushModalState('filter');
-                        setShowFilterModal(true);
-                      }}
-                      className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
-                        incGenres.length + excGenres.length > 0
-                          ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
-                          : 'bg-[#111119] border-white/10 text-zinc-200 hover:bg-white/10'
-                      }`}
-                    >
-                      <Filter className="w-3.5 h-3.5" />
-                      Thể loại
-                      {incGenres.length + excGenres.length > 0 && ` (${incGenres.length + excGenres.length})`}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
 
-            {loading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="space-y-2 animate-pulse">
-                    <div className="aspect-[2/3] rounded-2xl bg-white/[0.06]" />
-                    <div className="h-3.5 w-3/4 rounded bg-white/[0.06]" />
-                  </div>
-                ))}
-              </div>
-            ) : comics.length === 0 ? (
-              <div className="py-20 text-center rounded-3xl bg-[#111119] border border-white/5 text-zinc-400 text-sm">
-                Không tìm thấy bộ truyện nào phù hợp.
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {comics.map((comic, idx) => (
-                  <article
-                    key={comic.id}
-                    onClick={() => openComicDetail(comic.slug)}
-                    className="group cursor-pointer space-y-2"
-                  >
-                    <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-[#12121b] border border-white/[0.07] group-hover:border-rose-500/50 shadow-lg transition">
-                      <img
-                        src={resolveAssetUrl(comic.cover_url)}
-                        alt={comic.title}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                      />
-                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-
-                      {view === 'ranking' && page === 1 && idx < 3 && (
-                        <div className="absolute top-2 left-2 w-7 h-7 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-black font-black text-xs flex items-center justify-center shadow-lg">
-                          #{idx + 1}
+                  <div className="divide-y divide-white/5">
+                    {sidebarRanking.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        onClick={() => openComicDetail(item.slug)}
+                        className="w-full p-2.5 flex items-center gap-3 hover:bg-white/[0.04] text-left transition group"
+                      >
+                        <span
+                          className={`w-6 text-center font-extrabold text-sm tabular-nums ${
+                            idx === 0
+                              ? 'text-mag-400'
+                              : idx === 1
+                              ? 'text-lav-400'
+                              : idx === 2
+                              ? 'text-amber-400'
+                              : 'text-txt-secondary'
+                          }`}
+                        >
+                          {String(idx + 1).padStart(2, '0')}
+                        </span>
+                        <img
+                          src={resolveAssetUrl(item.cover_url)}
+                          alt={item.title}
+                          className="w-11 h-14 rounded object-cover bg-bgc-layer2 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-xs font-semibold text-txt-primary truncate group-hover:text-lav-400 transition">
+                            {item.title}
+                          </p>
+                          <div className="flex items-center justify-between text-[11px] text-txt-secondary">
+                            <span className="text-txt-focus">
+                              {item.latest_chapter !== null ? `Chap ${item.latest_chapter}` : 'Mới'}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Eye className="w-3 h-3" /> {formatViews(item.views_total)}
+                            </span>
+                          </div>
                         </div>
-                      )}
-
-                      {comic.status === 'completed' && (
-                        <span className="absolute top-2 right-2 px-2 py-0.5 rounded-lg bg-emerald-500/90 text-[10px] font-black text-black">
-                          FULL
-                        </span>
-                      )}
-
-                      <div className="absolute bottom-2 inset-x-2.5 flex items-center justify-between text-[11px] font-bold">
-                        <span className="px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur-md text-rose-300 border border-white/10">
-                          {comic.latest_chapter !== null ? `Ch.${comic.latest_chapter}` : 'Mới'}
-                        </span>
-                        <span className="text-zinc-200 flex items-center gap-0.5 drop-shadow">
-                          <Eye className="w-3 h-3" /> {formatViews(comic.views_total)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="px-0.5 space-y-0.5">
-                      <h3 className="text-xs sm:text-sm font-bold text-zinc-100 line-clamp-2 group-hover:text-rose-400 transition leading-snug">
-                        {comic.title}
-                      </h3>
-                      <p className="text-[11px] text-zinc-500">{formatRelTime(comic.updated_at)}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </aside>
             )}
-
-            {/* Phân trang */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-4">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => {
-                    const nextP = page - 1;
-                    setPage(nextP);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    navigateTo({ view, q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: nextP, libraryTab });
-                  }}
-                  className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Trước
-                </button>
-                <span className="px-4 py-2 rounded-xl bg-white/[0.04] text-xs font-bold text-zinc-300">
-                  Trang {page} / {totalPages}
-                </span>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => {
-                    const nextP = page + 1;
-                    setPage(nextP);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    navigateTo({ view, q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: nextP, libraryTab });
-                  }}
-                  className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 disabled:opacity-30 text-xs font-bold flex items-center gap-1"
-                >
-                  Sau <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </section>
+          </div>
         )}
 
-        {/* ==================== LIBRARY (TỦ TRUYỆN + SAO LƯU) ==================== */}
+        {/* ==================== TỦ TRUYỆN & LỊCH SỬ ==================== */}
         {view === 'library' && (
           <section className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/10">
+              <div className="flex bg-bgc-layer1 p-1 rounded-lg border border-bd-default">
                 <button
                   onClick={() => {
                     setLibraryTab('bookmarks');
                     navigateTo({ view: 'library', libraryTab: 'bookmarks' });
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
-                    libraryTab === 'bookmarks' ? 'bg-rose-500 text-white' : 'text-zinc-400'
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 ${
+                    libraryTab === 'bookmarks' ? 'bg-lav-500 text-white' : 'text-txt-secondary'
                   }`}
                 >
                   <Heart className="w-3.5 h-3.5" /> Đang theo dõi ({bookmarks.length})
@@ -868,8 +1261,8 @@ export function App() {
                     setLibraryTab('history');
                     navigateTo({ view: 'library', libraryTab: 'history' });
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
-                    libraryTab === 'history' ? 'bg-rose-500 text-white' : 'text-zinc-400'
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 ${
+                    libraryTab === 'history' ? 'bg-lav-500 text-white' : 'text-txt-secondary'
                   }`}
                 >
                   <History className="w-3.5 h-3.5" /> Lịch sử đọc ({historyList.length})
@@ -884,9 +1277,9 @@ export function App() {
                     setBackupMsg('');
                     setImportText('');
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-white/[0.07] hover:bg-white/15 text-xs font-bold flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 text-xs font-semibold flex items-center gap-1.5"
                 >
-                  <Download className="w-3.5 h-3.5 text-sky-400" /> Sao lưu / Khôi phục
+                  <Download className="w-3.5 h-3.5 text-lav-400" /> Sao lưu / Khôi phục
                 </button>
                 {libraryTab === 'history' && historyList.length > 0 && (
                   <button
@@ -895,7 +1288,7 @@ export function App() {
                       clearHistory();
                       setHistoryList([]);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-xs font-bold flex items-center gap-1.5"
+                    className="px-3.5 py-2 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-1.5"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Xóa lịch sử
                   </button>
@@ -905,25 +1298,25 @@ export function App() {
 
             {libraryTab === 'bookmarks' ? (
               bookmarks.length === 0 ? (
-                <div className="py-16 text-center rounded-3xl bg-[#111119] border border-white/5 text-zinc-400 text-sm">
+                <div className="py-16 text-center rounded-lg bg-bgc-layer1 border border-bd-default text-txt-secondary text-sm">
                   Bạn chưa theo dõi bộ truyện nào.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-4">
                   {bookmarks.map((c) => (
                     <div
                       key={c.slug}
                       onClick={() => openComicDetail(c.slug)}
                       className="cursor-pointer group space-y-2"
                     >
-                      <div className="aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10">
+                      <div className="aspect-[2/3] rounded-lg overflow-hidden bg-bgc-layer1 border border-bd-default group-hover:border-lav-500">
                         <img
                           src={resolveAssetUrl(c.cover_url)}
                           alt={c.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition"
                         />
                       </div>
-                      <p className="text-xs font-bold text-white line-clamp-2 group-hover:text-rose-400">
+                      <p className="text-xs font-semibold text-txt-primary line-clamp-2 group-hover:text-lav-400">
                         {c.title}
                       </p>
                     </div>
@@ -931,7 +1324,7 @@ export function App() {
                 </div>
               )
             ) : historyList.length === 0 ? (
-              <div className="py-16 text-center rounded-3xl bg-[#111119] border border-white/5 text-zinc-400 text-sm">
+              <div className="py-16 text-center rounded-lg bg-bgc-layer1 border border-bd-default text-txt-secondary text-sm">
                 Chưa có lịch sử đọc truyện.
               </div>
             ) : (
@@ -940,18 +1333,18 @@ export function App() {
                   <div
                     key={h.slug}
                     onClick={() => openChapter(h.chapter_id)}
-                    className="p-3 rounded-2xl bg-[#111119] border border-white/10 hover:border-rose-500/40 flex items-center gap-3 cursor-pointer transition"
+                    className="p-3 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 flex items-center gap-3 cursor-pointer transition"
                   >
                     <img
                       src={resolveAssetUrl(h.cover_url)}
                       alt={h.title}
-                      className="w-14 h-20 rounded-xl object-cover bg-zinc-900 shrink-0"
+                      className="w-14 h-20 rounded object-cover bg-bgc-layer2 shrink-0"
                     />
                     <div className="flex-1 min-w-0 space-y-1">
-                      <p className="text-sm font-bold text-white truncate">{h.title}</p>
-                      <p className="text-xs font-semibold text-rose-400">Đang đọc Chương {h.chapter_number}</p>
+                      <p className="text-sm font-semibold text-txt-primary truncate">{h.title}</p>
+                      <p className="text-xs font-medium text-mag-400">Đang đọc Chap {h.chapter_number}</p>
                       {h.total_pages && h.progress ? (
-                        <p className="text-[11px] text-zinc-500">
+                        <p className="text-[11px] text-txt-secondary">
                           Trang {h.progress} / {h.total_pages}
                         </p>
                       ) : null}
@@ -963,107 +1356,111 @@ export function App() {
           </section>
         )}
 
-        {/* ==================== COMIC DETAIL ==================== */}
+        {/* ==================== TRANG CHI TIẾT TRUYỆN (CHUẨN VINAHENTAI) ==================== */}
         {view === 'detail' && (
-          <section className="space-y-6">
-            <button
-              onClick={() => {
-                if (window.history.length > 1 && window.history.state?.fromApp) {
-                  window.history.back();
-                } else {
-                  navigateTo({ view: 'home' });
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-xs font-bold"
-            >
-              <ArrowLeft className="w-4 h-4" /> Quay lại
-            </button>
-
+          <section className="pb-16">
             {detailLoading || !selectedComic ? (
-              <div className="py-20 text-center text-zinc-400">Đang tải thông tin truyện...</div>
+              <div className="py-20 text-center text-txt-secondary">Đang tải thông tin truyện...</div>
             ) : (
               <>
-                <div className="rounded-3xl bg-[#111119] border border-white/10 p-5 sm:p-7 flex flex-col sm:flex-row gap-6">
-                  <img
-                    src={resolveAssetUrl(selectedComic.cover_url)}
-                    alt={selectedComic.title}
-                    className="w-44 sm:w-56 aspect-[2/3] rounded-2xl object-cover shadow-2xl border border-white/10 self-center sm:self-start shrink-0"
-                  />
+                {/* Breadcrumb */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-txt-focus text-sm font-medium">
+                  <ol className="flex flex-wrap items-center gap-1">
+                    <li className="flex items-center gap-1">
+                      <button
+                        onClick={() => navigateTo({ view: 'home' })}
+                        className="transition-colors hover:text-lav-500"
+                      >
+                        Trang chủ
+                      </button>
+                      <span className="text-txt-secondary/60 px-0.5">/</span>
+                    </li>
+                    <li>
+                      <span className="text-txt-focus">{selectedComic.title}</span>
+                    </li>
+                  </ol>
+                </nav>
 
-                  <div className="flex-1 space-y-4">
-                    <div>
-                      <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+                {/* Main Comic Info Box */}
+                <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+                  {/* Cover */}
+                  <div className="relative mx-auto w-48 sm:w-56 aspect-[2/3] flex-shrink-0 overflow-hidden rounded-lg border border-bd-default bg-bgc-layer1 shadow-xl">
+                    <img
+                      src={resolveAssetUrl(selectedComic.cover_url)}
+                      alt={`Bìa truyện ${selectedComic.title}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+
+                  {/* Metadata Column */}
+                  <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-1">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-txt-primary text-2xl leading-snug font-semibold">
                         {selectedComic.title}
                       </h1>
                       {selectedComic.alt_titles && (
-                        <p className="text-xs text-zinc-400 mt-1">{selectedComic.alt_titles}</p>
+                        <div className="text-txt-secondary text-sm">{selectedComic.alt_titles}</div>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(String(selectedComic.id)).catch(() => {});
+                          setCopiedId(true);
+                          setTimeout(() => setCopiedId(false), 2000);
+                        }}
+                        className="text-txt-secondary hover:text-txt-primary mt-1 inline-flex w-fit items-center gap-1.5 text-xs"
+                      >
+                        <span className="select-all font-mono">#{selectedComic.id}</span>
+                        {copiedId ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     </div>
 
-                    {/* Metadata & Đánh giá sao trực tiếp */}
-                    <div className="flex flex-wrap items-center gap-3 text-xs">
-                      <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 font-bold">
+                    <div className="border-bd-default h-0 border-t" />
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-[auto_1fr] items-center gap-y-3 gap-x-3 text-sm sm:text-base">
+                      <div className="text-txt-secondary w-28 font-medium">Tình trạng:</div>
+                      <div className="text-txt-primary font-medium">
                         {selectedComic.status === 'completed' ? 'Hoàn thành' : 'Đang tiến hành'}
-                      </span>
-                      <span className="flex items-center gap-1 text-zinc-300 font-bold">
-                        <Eye className="w-3.5 h-3.5 text-sky-400" /> {formatViews(selectedComic.views_total)} lượt xem
-                      </span>
-                      {selectedComic.author && (
-                        <button
-                          onClick={() => {
-                            const authorSlug = selectedComic.author!.slug;
-                            setAuthorFilter(authorSlug);
-                            setPage(1);
-                            navigateTo({ view: 'browse', author: authorSlug, sort, status: statusFilter, inc: incGenres, exc: excGenres, page: 1 });
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 font-bold hover:bg-sky-500/25"
-                        >
-                          Tác giả: {selectedComic.author.name}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Interactive Rating */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-0.5">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button
-                            key={star}
-                            disabled={ratedDone}
-                            onMouseEnter={() => setUserRatingHover(star)}
-                            onMouseLeave={() => setUserRatingHover(0)}
-                            onClick={async () => {
-                              try {
-                                const res = await rateComic(selectedComic.id, star);
-                                setSelectedComic({
-                                  ...selectedComic,
-                                  rating_avg: res.rating_avg,
-                                  rating_count: res.rating_count,
-                                });
-                                setRatedDone(true);
-                              } catch {}
-                            }}
-                            className="p-0.5 transition hover:scale-110 disabled:cursor-default"
-                          >
-                            <Star
-                              className={`w-4 h-4 ${
-                                star <= (userRatingHover || Math.round(selectedComic.rating_avg))
-                                  ? 'text-amber-400 fill-amber-400'
-                                  : 'text-zinc-600'
-                              }`}
-                            />
-                          </button>
-                        ))}
                       </div>
-                      <span className="text-xs font-bold text-amber-300">
-                        {selectedComic.rating_avg.toFixed(1)} / 5 ({selectedComic.rating_count} đánh giá)
-                      </span>
-                      {ratedDone && <span className="text-[11px] text-emerald-400 font-bold">Cảm ơn bạn đã đánh giá!</span>}
-                    </div>
 
-                    {/* Genres */}
-                    {selectedComic.genres.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="text-txt-secondary w-28 font-medium">Tác giả:</div>
+                      <div className="flex flex-wrap gap-2 justify-self-start">
+                        {selectedComic.author ? (
+                          <button
+                            onClick={() => {
+                              const authorSlug = selectedComic.author!.slug;
+                              setAuthorFilter(authorSlug);
+                              setPage(1);
+                              navigateTo({ view: 'browse', author: authorSlug, page: 1 });
+                            }}
+                            className="group inline-flex h-8 max-w-[260px] items-stretch overflow-hidden rounded-md border border-white/15 hover:border-lav-500 transition"
+                          >
+                            <span className="flex min-w-0 items-center bg-black/30 group-hover:bg-black/50 px-3 text-xs sm:text-sm font-medium text-txt-primary">
+                              {selectedComic.author.name}
+                            </span>
+                            {selectedComic.same_author_comics && (
+                              <span className="flex items-center border-l border-white/15 bg-black/45 px-2.5 text-xs font-semibold text-txt-focus">
+                                {selectedComic.same_author_comics.length + 1}
+                              </span>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-txt-primary font-medium">Đang cập nhật</span>
+                        )}
+                      </div>
+
+                      <div className="text-txt-secondary w-28 font-medium">Cập nhật:</div>
+                      <time className="text-txt-primary font-medium">
+                        {formatRelTime(selectedComic.updated_at)}
+                      </time>
+
+                      <div className="text-txt-secondary w-28 self-start pt-0.5 font-medium">Thể loại:</div>
+                      <div className="flex flex-wrap gap-2">
                         {selectedComic.genres.map((g) => (
                           <button
                             key={g.id}
@@ -1071,185 +1468,272 @@ export function App() {
                               setIncGenres([g.slug]);
                               setExcGenres([]);
                               setPage(1);
-                              navigateTo({ view: 'browse', inc: [g.slug], sort, status: statusFilter, author: authorFilter, page: 1 });
+                              navigateTo({ view: 'browse', inc: [g.slug], page: 1 });
                             }}
-                            className="px-2.5 py-1 rounded-xl bg-white/[0.06] hover:bg-rose-500/20 hover:text-rose-300 text-[11px] font-bold text-zinc-300 transition"
+                            className="inline-flex items-center rounded-md border border-white/20 bg-black/30 hover:border-lav-500 hover:bg-lav-500/20 px-2.5 py-1 text-xs font-medium text-[#EBD7FF]/95 transition"
                           >
                             {g.name}
                           </button>
                         ))}
                       </div>
-                    )}
+
+                      <div className="text-txt-secondary w-28 font-medium">Tổng quan:</div>
+                      <div className="flex flex-wrap items-center gap-4 text-sm">
+                        <span className="inline-flex items-center gap-1.5 text-txt-secondary">
+                          <Eye className="w-4 h-4 text-lav-400" />
+                          <span className="text-txt-primary font-medium">
+                            {selectedComic.views_total.toLocaleString('vi-VN')}
+                          </span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-txt-secondary">
+                          <BookOpen className="w-4 h-4 text-mag-400" />
+                          <span className="text-txt-primary font-medium tabular-nums">
+                            {selectedComic.chapters.length} chương
+                          </span>
+                        </span>
+                        <div className="inline-flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              disabled={ratedDone}
+                              onMouseEnter={() => setUserRatingHover(star)}
+                              onMouseLeave={() => setUserRatingHover(0)}
+                              onClick={async () => {
+                                try {
+                                  const res = await rateComic(selectedComic.id, star);
+                                  setSelectedComic({
+                                    ...selectedComic,
+                                    rating_avg: res.rating_avg,
+                                    rating_count: res.rating_count,
+                                  });
+                                  setRatedDone(true);
+                                } catch {}
+                              }}
+                              className="p-0.5 hover:scale-110 transition"
+                            >
+                              <Star
+                                className={`w-4 h-4 ${
+                                  star <= (userRatingHover || Math.round(selectedComic.rating_avg))
+                                    ? 'text-amber-400 fill-amber-400'
+                                    : 'text-zinc-600'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                          <span className="text-xs font-medium text-txt-secondary ml-1">
+                            ({selectedComic.rating_avg.toFixed(1)}/5)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
                     {selectedComic.description && (
-                      <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed whitespace-pre-line">
+                      <p className="text-sm text-txt-secondary leading-relaxed whitespace-pre-line bg-bgc-layer1/70 border border-bd-default rounded-lg p-3.5">
                         {selectedComic.description}
                       </p>
                     )}
 
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap gap-2.5 pt-2">
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleBookmark(selectedComic);
+                          setBookmarks(getBookmarks());
+                        }}
+                        className={`hover-lift inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                          isBookmarked(selectedComic.slug)
+                            ? 'border-mag-500 bg-mag-500/20 text-mag-400'
+                            : 'border-bd-strong bg-bgc-layer2 hover:border-lav-500 text-txt-primary'
+                        }`}
+                      >
+                        <Heart
+                          className={`w-4 h-4 ${
+                            isBookmarked(selectedComic.slug) ? 'fill-mag-500 text-mag-500' : ''
+                          }`}
+                        />
+                        <span>{isBookmarked(selectedComic.slug) ? 'Đang theo dõi' : 'Theo dõi'}</span>
+                      </button>
+
                       {selectedComic.chapters.length > 0 && (
                         <>
                           <button
                             onClick={() =>
                               openChapter(selectedComic.chapters[selectedComic.chapters.length - 1].id)
                             }
-                            className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 text-xs sm:text-sm font-extrabold text-white shadow-lg shadow-rose-500/25"
+                            className="hover-lift inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-lav-500/25"
                           >
-                            Đọc từ đầu
+                            Đọc ngay
                           </button>
                           <button
                             onClick={() => openChapter(selectedComic.chapters[0].id)}
-                            className="px-5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-xs sm:text-sm font-extrabold text-white"
+                            className="hover-lift inline-flex items-center justify-center gap-2 rounded-xl border border-bd-strong bg-bgc-layer2 hover:border-lav-500 px-4 py-2.5 text-sm font-semibold text-txt-primary"
                           >
-                            Đọc mới nhất (Ch.{selectedComic.chapters[0].chapter_number})
+                            Chap mới nhất (Chap {selectedComic.chapters[0].chapter_number})
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => {
-                          toggleBookmark(selectedComic);
-                          setBookmarks(getBookmarks());
-                        }}
-                        className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold flex items-center gap-1.5 border transition ${
-                          isBookmarked(selectedComic.slug)
-                            ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                            : 'bg-white/5 border-white/10 text-zinc-200 hover:bg-white/10'
-                        }`}
-                      >
-                        <Heart
-                          className={`w-4 h-4 ${isBookmarked(selectedComic.slug) ? 'fill-rose-500 text-rose-500' : ''}`}
-                        />
-                        {isBookmarked(selectedComic.slug) ? 'Đang theo dõi' : 'Theo dõi'}
-                      </button>
                     </div>
                   </div>
                 </div>
 
-                {/* Danh sách chương + Ô nhảy chương nhanh */}
-                <div className="rounded-3xl bg-[#111119] border border-white/10 p-5 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="font-black text-base text-white">
-                      Danh sách chương ({selectedComic.chapters.length})
+                {/* DANH SÁCH CHƯƠNG */}
+                <div className="mt-8 flex flex-col">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
+                      DANH SÁCH CHƯƠNG ({selectedComic.chapters.length})
                     </h2>
                     <div className="flex items-center gap-2">
                       <input
                         value={chapterSearch}
                         onChange={(e) => setChapterSearch(e.target.value)}
-                        placeholder="Tìm số chương..."
-                        className="w-36 sm:w-48 px-3 py-1.5 rounded-xl bg-black/50 border border-white/10 text-xs text-white outline-none focus:border-rose-500"
+                        placeholder="Tìm số chap..."
+                        className="w-36 sm:w-44 px-3 py-1.5 rounded-lg bg-bgc-layer1 border border-bd-default text-xs text-txt-primary outline-none focus:border-lav-500"
                       />
                       <button
                         onClick={() => setChapterSortAsc((a) => !a)}
-                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300"
+                        className="px-3 py-1.5 rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 text-xs font-semibold text-txt-secondary hover:text-txt-primary"
                       >
                         {chapterSortAsc ? 'Cũ → Mới' : 'Mới → Cũ'}
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[460px] overflow-y-auto pr-1">
+                  <div className="flex max-h-[552px] flex-col overflow-y-auto rounded-md border border-bd-default bg-bgc-layer1 divide-y divide-white/5">
                     {filteredChapters.map((ch) => (
                       <button
                         key={ch.id}
                         onClick={() => openChapter(ch.id)}
-                        className="p-3 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 border border-white/[0.06] hover:border-rose-500/40 text-left transition group"
+                        className="block w-full px-4 py-2.5 text-left transition-colors hover:bg-white/5 group"
                       >
-                        <p className="text-xs font-extrabold text-zinc-100 group-hover:text-rose-300 truncate">
-                          Chương {ch.chapter_number}
-                        </p>
-                        <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                          {ch.title || formatRelTime(ch.created_at)}
-                        </p>
+                        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                          <span className="text-txt-primary group-hover:text-lav-400 min-w-0 text-sm sm:text-base font-medium truncate">
+                            Chap {ch.chapter_number}
+                            {ch.title ? ` — ${ch.title}` : ''}
+                          </span>
+                          <span className="text-xs text-txt-secondary shrink-0">
+                            {formatRelTime(ch.created_at)}
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Cùng tác giả */}
-                {selectedComic.same_author_comics && selectedComic.same_author_comics.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-black text-base text-white">Truyện cùng tác giả</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                      {selectedComic.same_author_comics.map((rel) => (
-                        <div
-                          key={rel.id}
-                          onClick={() => openComicDetail(rel.slug)}
-                          className="cursor-pointer group space-y-1.5"
-                        >
-                          <div className="aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10">
-                            <img
-                              src={resolveAssetUrl(rel.cover_url)}
-                              alt={rel.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition"
-                            />
-                          </div>
-                          <p className="text-xs font-bold text-zinc-200 line-clamp-2 group-hover:text-rose-400">
-                            {rel.title}
-                          </p>
-                        </div>
-                      ))}
+                {/* BÌNH LUẬN */}
+                <div className="mt-8 space-y-4">
+                  <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
+                    BÌNH LUẬN
+                  </h2>
+                  {!currentUser && (
+                    <div className="rounded-md border border-bd-default bg-bgc-layer1 py-5 text-center text-sm text-txt-secondary">
+                      Vui lòng{' '}
+                      <button
+                        onClick={() => setAuthModalOpen(true)}
+                        className="text-mag-400 hover:text-mag-500 font-semibold underline"
+                      >
+                        Đăng nhập
+                      </button>{' '}
+                      để bình luận
                     </div>
-                  </div>
-                )}
+                  )}
+                  <CommentSection
+                    comicId={selectedComic.id}
+                    currentUser={currentUser}
+                    onRequireAuth={() => setAuthModalOpen(true)}
+                  />
+                </div>
               </>
             )}
           </section>
         )}
       </main>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0a0a10]/95 backdrop-blur-2xl border-t border-white/10 pb-[calc(0.5rem+var(--sab))] px-safe pt-2 flex items-center justify-around">
-        {[
-          { id: 'home', label: 'Trang chủ', icon: <Home className="w-5 h-5" /> },
-          { id: 'browse', label: 'Khám phá', icon: <Compass className="w-5 h-5" /> },
-          { id: 'ranking', label: 'BXH', icon: <Trophy className="w-5 h-5" /> },
-          { id: 'library', label: 'Tủ truyện', icon: <Library className="w-5 h-5" /> },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setPage(1);
-              const newSort = item.id === 'ranking' ? 'top-day' : sort;
-              if (item.id === 'ranking') setSort('top-day');
-              navigateTo({
-                view: item.id as ViewMode,
-                sort: newSort,
-                libraryTab: item.id === 'library' ? libraryTab : undefined,
-              });
-            }}
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-bold transition min-h-[44px] justify-center ${
-              view === item.id ? 'text-rose-400' : 'text-zinc-500'
-            }`}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      {/* ==================== MENU DRAWER ==================== */}
+      {menuDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex justify-end">
+          <div className="w-72 max-w-[85vw] h-full bg-bgc-layer1 border-l border-bd-strong p-5 flex flex-col justify-between">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between border-b border-bd-default pb-3">
+                <span className="font-extrabold text-base text-white">
+                  Vina<span className="text-lav-400">Hentai</span>
+                </span>
+                <button
+                  onClick={() => setMenuDrawerOpen(false)}
+                  className="p-1.5 rounded-lg bg-bgc-layer2 text-txt-secondary hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-      {/* Modal Lọc Thể Loại */}
+              <div className="space-y-1.5 text-sm font-medium">
+                <button
+                  onClick={() => navigateTo({ view: 'home' })}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <Home className="w-4 h-4 text-lav-400" /> Trang chủ
+                </button>
+                <button
+                  onClick={() => navigateTo({ view: 'ranking', sort: 'top-day' })}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <Trophy className="w-4 h-4 text-mag-400" /> Bảng xếp hạng
+                </button>
+                <button
+                  onClick={() => navigateTo({ view: 'library', libraryTab: 'bookmarks' })}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <Heart className="w-4 h-4 text-mag-400" /> Truyện theo dõi ({bookmarks.length})
+                </button>
+                <button
+                  onClick={() => navigateTo({ view: 'library', libraryTab: 'history' })}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <History className="w-4 h-4 text-lav-400" /> Lịch sử đọc ({historyList.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuDrawerOpen(false);
+                    pushModalState('filter');
+                    setShowFilterModal(true);
+                  }}
+                  className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-lav-400" /> Tìm kiếm nâng cao
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-bd-default pt-4 space-y-2">
+              <button
+                onClick={() => navigateTo({ view: 'admin' })}
+                className="w-full px-3 py-2 rounded-lg bg-bgc-layer2 hover:border-lav-500 border border-bd-default text-xs font-semibold text-txt-secondary hover:text-txt-primary flex items-center gap-2"
+              >
+                <Shield className="w-4 h-4 text-lav-400" /> Bảng điều khiển Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL TÌM KIẾM NÂNG CAO ==================== */}
       {showFilterModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-5 max-h-[85dvh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-t-2xl sm:rounded-2xl bg-bgc-layer1 border border-bd-strong p-5 space-y-4 max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-black text-base text-white">Lọc theo Thể loại</h3>
-                <p className="text-[11px] text-zinc-400">
-                  Nhấn 1 lần: <span className="text-emerald-400 font-bold">Bao gồm</span> • Nhấn 2 lần:{' '}
-                  <span className="text-rose-400 font-bold">Loại trừ</span> • Nhấn 3 lần: Bỏ chọn
+                <h3 className="font-bold text-base text-txt-primary">Tìm kiếm nâng cao theo Thể loại</h3>
+                <p className="text-xs text-txt-secondary">
+                  Nhấn 1 lần: <span className="text-emerald-400 font-semibold">Bao gồm</span> • Nhấn 2 lần:{' '}
+                  <span className="text-mag-400 font-semibold">Loại trừ</span> • Nhấn 3 lần: Bỏ chọn
                 </p>
               </div>
               <button
                 onClick={() => {
-                  if (window.history.state?.modal === 'filter') {
-                    window.history.back();
-                  } else {
-                    setShowFilterModal(false);
-                  }
+                  if (window.history.state?.modal === 'filter') window.history.back();
+                  else setShowFilterModal(false);
                 }}
-                className="text-zinc-400 hover:text-white p-2"
+                className="text-txt-secondary hover:text-white p-1.5"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1263,12 +1747,12 @@ export function App() {
                   <button
                     key={g.id}
                     onClick={() => cycleGenreState(g.slug)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition min-h-[38px] flex items-center ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
                       isInc
                         ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                         : isExc
-                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 line-through'
-                        : 'bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10'
+                        ? 'bg-mag-500/20 border-mag-500 text-mag-400 line-through'
+                        : 'bg-bgc-layer2 border-bd-default text-txt-secondary hover:text-txt-primary'
                     }`}
                   >
                     {isInc ? '+ ' : isExc ? '− ' : ''}
@@ -1278,84 +1762,87 @@ export function App() {
               })}
             </div>
 
-            <div className="flex justify-between items-center pt-2">
+            <div className="flex justify-between items-center pt-2 border-t border-bd-default">
               <button
                 onClick={() => {
                   setIncGenres([]);
                   setExcGenres([]);
                 }}
-                className="text-xs font-bold text-zinc-400 hover:text-white"
+                className="text-xs font-semibold text-txt-secondary hover:text-white"
               >
-                Đặt lại tất cả
+                Đặt lại
               </button>
               <button
                 onClick={() => {
-                  if (window.history.state?.modal === 'filter') {
-                    window.history.back();
-                  } else {
-                    setShowFilterModal(false);
-                  }
+                  if (window.history.state?.modal === 'filter') window.history.back();
+                  else setShowFilterModal(false);
                   setPage(1);
-                  replaceRoute({ view: 'browse', q: activeQuery, sort, status: statusFilter, author: authorFilter, inc: incGenres, exc: excGenres, page: 1 });
+                  replaceRoute({
+                    view: 'browse',
+                    q: activeQuery,
+                    sort,
+                    status: statusFilter,
+                    author: authorFilter,
+                    inc: incGenres,
+                    exc: excGenres,
+                    page: 1,
+                  });
                   setView('browse');
                 }}
-                className="px-5 py-2.5 rounded-xl bg-rose-500 text-xs font-bold text-white min-h-[40px]"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 text-xs font-bold text-white"
               >
-                Áp dụng
+                Áp dụng bộ lọc
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Sao lưu / Khôi phục tủ truyện */}
+      {/* ==================== MODAL SAO LƯU / KHÔI PHỤC ==================== */}
       {backupModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4 pb-[calc(1.25rem+var(--sab))] sm:pb-5 max-h-[85dvh] overflow-y-auto">
+          <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-bgc-layer1 border border-bd-strong p-5 space-y-4 max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-black text-base text-white">Sao lưu & Khôi phục Tủ truyện</h3>
+              <h3 className="font-bold text-base text-txt-primary">Sao lưu & Khôi phục Tủ truyện</h3>
               <button
                 onClick={() => {
-                  if (window.history.state?.modal === 'backup') {
-                    window.history.back();
-                  } else {
-                    setBackupModalOpen(false);
-                  }
+                  if (window.history.state?.modal === 'backup') window.history.back();
+                  else setBackupModalOpen(false);
                 }}
-                className="text-zinc-400 hover:text-white p-2"
+                className="text-txt-secondary hover:text-white p-1.5"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-2">
-              <button
-                onClick={() => {
-                  const data = exportUserData();
-                  navigator.clipboard?.writeText(data).catch(() => {});
-                  const blob = new Blob([data], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `vinareader-backup-${new Date().toISOString().slice(0, 10)}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  setBackupMsg('Đã tải file sao lưu JSON và sao chép vào bộ nhớ tạm!');
-                }}
-                className="w-full py-3 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-xs font-bold flex items-center justify-center gap-1.5 min-h-[44px]"
-              >
-                <Download className="w-4 h-4" /> Xuất file sao lưu (JSON)
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                const data = exportUserData();
+                navigator.clipboard?.writeText(data).catch(() => {});
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `vinahentai-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                setBackupMsg('Đã tải file sao lưu JSON và sao chép vào bộ nhớ tạm!');
+              }}
+              className="w-full py-2.5 rounded-xl bg-lav-500/20 hover:bg-lav-500/30 border border-lav-500 text-txt-focus text-xs font-bold flex items-center justify-center gap-1.5"
+            >
+              <Download className="w-4 h-4" /> Xuất file sao lưu (JSON)
+            </button>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400">Hoặc dán mã JSON để khôi phục sang máy mới:</label>
+              <label className="text-xs font-semibold text-txt-secondary">
+                Hoặc dán mã JSON để khôi phục sang máy mới:
+              </label>
               <textarea
                 rows={4}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 placeholder='{"version": 2, "bookmarks": [...], "history": [...]}'
-                className="w-full rounded-xl bg-black/50 border border-white/10 p-3 text-xs text-white font-mono"
+                className="w-full rounded-xl bg-bgc-layer2 border border-bd-default p-3 text-xs text-txt-primary font-mono outline-none focus:border-lav-500"
               />
               <button
                 onClick={() => {
@@ -1363,12 +1850,14 @@ export function App() {
                     const res = importUserData(importText);
                     setBookmarks(getBookmarks());
                     setHistoryList(getHistory());
-                    setBackupMsg(`Khôi phục thành công: ${res.bookmarks} truyện theo dõi & ${res.history} lịch sử!`);
+                    setBackupMsg(
+                      `Khôi phục thành công: ${res.bookmarks} truyện theo dõi & ${res.history} lịch sử!`
+                    );
                   } catch (err) {
                     setBackupMsg((err as Error).message);
                   }
                 }}
-                className="w-full py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 min-h-[44px]"
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 text-white text-xs font-bold flex items-center justify-center gap-1.5"
               >
                 <Upload className="w-4 h-4" /> Nhập dữ liệu khôi phục
               </button>
@@ -1379,7 +1868,7 @@ export function App() {
         </div>
       )}
 
-      {/* Auth Modal (Login / Register) */}
+      {/* Auth Modal */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
