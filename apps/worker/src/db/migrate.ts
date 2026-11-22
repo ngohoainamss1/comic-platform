@@ -94,6 +94,8 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
 
     try { await db.execute('ALTER TABLE comics ADD COLUMN is_featured INTEGER DEFAULT 0'); } catch {}
     try { await db.execute('ALTER TABLE comics ADD COLUMN is_hidden INTEGER DEFAULT 0'); } catch {}
+    try { await db.execute('ALTER TABLE comics ADD COLUMN translator TEXT DEFAULT ""'); } catch {}
+    try { await db.execute('ALTER TABLE comics ADD COLUMN likes_count INTEGER DEFAULT 0'); } catch {}
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_name', 'VinaHentai')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_enabled', '0')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_text', '')");

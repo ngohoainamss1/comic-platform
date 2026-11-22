@@ -383,6 +383,33 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         if author.lower() in {"đang cập nhật", "updating", "unknown", "n/a", "chưa rõ", "none", "-", ""}:
             author = ""
 
+        translator = ""
+        translator_el = soup.select_one(
+            ".translator p.col-xs-8, .translator .col-xs-8, .translator-content, "
+            ".info-item .translator, li.translator p:last-child, "
+            ".detail-info a[href*='dich-gia'], a[href*='/dich-gia/'], a[href*='/translator/'], "
+            "a[href*='/translators/']"
+        )
+        if translator_el:
+            translator = re.sub(r"\s+", " ", translator_el.get_text(" ", strip=True)).strip()
+        if not translator:
+            for li in soup.select(".list-info li, .detail-info li, .info-item, tr"):
+                txt = re.sub(r"\s+", " ", li.get_text(" ", strip=True))
+                m_tr = re.match(r"^(?:dịch giả|translator)\s*[:：]?\s*(.+)$", txt, re.IGNORECASE)
+                if m_tr:
+                    translator = m_tr.group(1).strip()
+                    break
+        translator = re.sub(r"\s+\d+$", "", translator).strip()
+        if translator.lower() in {"đang cập nhật", "updating", "unknown", "n/a", "chưa rõ", "none", "-", ""}:
+            translator = ""
+
+        likes_count = 0
+        likes_el = soup.select_one(".like-count, .likes-count, [aria-label*='thích'], [aria-label*='likes']")
+        if likes_el:
+            m_l = re.search(r"(\d+)", likes_el.get_text())
+            if m_l:
+                likes_count = int(m_l.group(1))
+
         chapters = self._parse_chapter_entries(soup, comic_url)
 
         if len(chapters) <= 2:
@@ -409,6 +436,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             genres=genres,
             chapters=chapters,
             author=author,
+            translator=translator,
+            likes_count=likes_count,
         )
 
     def fetch_chapter_images(self, chapter_url: str, referer_url: str = "") -> list[str]:

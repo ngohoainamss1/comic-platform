@@ -210,6 +210,14 @@ def ensure_watchlist_schema(db_state: dict):
         db_exec(db_state, "ALTER TABLE comics ADD COLUMN author_id INTEGER DEFAULT NULL")
     except Exception:
         pass
+    try:
+        db_exec(db_state, "ALTER TABLE comics ADD COLUMN translator TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        db_exec(db_state, "ALTER TABLE comics ADD COLUMN likes_count INTEGER DEFAULT 0")
+    except Exception:
+        pass
     db_exec(db_state, "CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id)")
     db_exec(
         db_state,
@@ -658,10 +666,12 @@ def sync_comic_genres(db_state: dict, comic_id: int, raw_genres: list[str]):
 def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str, bool]:
     slug = normalize_vn_slug(detail.title)
     author_id = sync_author(db_state, getattr(detail, "author", ""))
+    translator = getattr(detail, "translator", "")
+    likes_count = getattr(detail, "likes_count", 0)
 
     existing = db_exec(
         db_state,
-        "SELECT id, cover_file_id, status, description, alt_titles, author_id FROM comics WHERE slug = ? LIMIT 1",
+        "SELECT id, cover_file_id, status, description, alt_titles, author_id, translator, likes_count FROM comics WHERE slug = ? LIMIT 1",
         [slug],
     )
     if existing.rows:
@@ -671,6 +681,7 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
         old_desc = str(existing.rows[0][3] or "")
         old_alt = str(existing.rows[0][4] or "")
         old_author_id = existing.rows[0][5]
+        old_translator = str(existing.rows[0][6] or "")
 
         updates = []
         params = []
@@ -691,6 +702,12 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
         if author_id is not None and not old_author_id:
             updates.append("author_id = ?")
             params.append(author_id)
+        if translator and not old_translator:
+            updates.append("translator = ?")
+            params.append(translator)
+        if likes_count > 0:
+            updates.append("likes_count = ?")
+            params.append(likes_count)
 
         if updates:
             params.append(comic_id)
@@ -702,8 +719,8 @@ def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str
     tg_id, gh_path = _upload_cover(detail, slug, page_url)
     db_exec(
         db_state,
-        "INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status, author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [slug, detail.title, detail.alt_titles, detail.description, tg_id, gh_path, detail.status, author_id],
+        "INSERT INTO comics (slug, title, alt_titles, description, cover_file_id, cover_gh_path, status, author_id, translator, likes_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [slug, detail.title, detail.alt_titles, detail.description, tg_id, gh_path, detail.status, author_id, translator, likes_count],
     )
     comic_id = int(db_exec(db_state, "SELECT id FROM comics WHERE slug = ? LIMIT 1", [slug]).rows[0][0])
     sync_comic_genres(db_state, comic_id, detail.genres)

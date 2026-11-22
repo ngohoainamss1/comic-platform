@@ -27,6 +27,8 @@ class ComicDetail:
     genres: list[str]
     chapters: list[ChapterInfo]
     author: str = ""
+    translator: str = ""
+    likes_count: int = 0
 
 
 class BaseSourceAdapter(ABC):

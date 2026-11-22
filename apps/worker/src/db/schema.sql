@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS comics (
     cover_gh_path TEXT DEFAULT '',
     status TEXT DEFAULT 'ongoing',
     author_id INTEGER DEFAULT NULL,
+    translator TEXT DEFAULT '',
+    likes_count INTEGER DEFAULT 0,
     is_featured INTEGER DEFAULT 0,
     is_hidden INTEGER DEFAULT 0,
     views_day INTEGER DEFAULT 0,

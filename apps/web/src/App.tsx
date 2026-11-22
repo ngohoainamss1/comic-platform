@@ -1554,6 +1554,11 @@ export function App() {
                         )}
                       </div>
 
+                      <div className="text-txt-secondary w-28 font-medium">Dịch giả:</div>
+                      <div className="text-txt-primary font-medium">
+                        {selectedComic.translator || 'Đang cập nhật'}
+                      </div>
+
                       <div className="text-txt-secondary w-28 font-medium">Cập nhật:</div>
                       <time className="text-txt-primary font-medium">
                         {formatRelTime(selectedComic.updated_at)}
@@ -1676,8 +1681,34 @@ export function App() {
                   </div>
                 </div>
 
+                {/* Translator Profile Card */}
+                {selectedComic.translator && (
+                  <div className="mt-8 overflow-hidden rounded-md border border-bd-default bg-bgc-layer1">
+                    <div className="relative px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={getAvatarUrl(selectedComic.translator, selectedComic.translator)}
+                          alt=""
+                          className="h-12 w-12 rounded-full object-cover bg-bgc-layer2 border border-bd-default"
+                        />
+                        <div>
+                          <div className="text-txt-primary font-bold text-sm">
+                            {selectedComic.translator}
+                          </div>
+                          <div className="text-txt-secondary text-[11px]">
+                            Cấp 5 · Dịch giả chính
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs text-lav-400 hover:underline flex items-center gap-1 cursor-pointer">
+                        Trang dịch giả ↗
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* DANH SÁCH CHƯƠNG */}
-                <div className="mt-8 flex flex-col">
+                <div className="mt-6 flex flex-col">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
                       DANH SÁCH CHƯƠNG ({selectedComic.chapters.length})

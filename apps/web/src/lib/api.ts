@@ -44,6 +44,8 @@ export interface ComicDetail extends ComicSummary {
   alt_titles: string;
   description: string;
   rating_count: number;
+  translator?: string;
+  likes_count?: number;
   author?: AuthorItem | null;
   same_author_comics?: ComicSummary[];
   genres: GenreItem[];

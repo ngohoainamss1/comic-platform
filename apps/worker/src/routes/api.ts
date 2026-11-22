@@ -247,6 +247,8 @@ apiRoutes.get('/comics/:slug', async (c) => {
         description: String(comic.description || ''),
         cover_url: coverUrl,
         status: String(comic.status),
+        translator: String(comic.translator || ''),
+        likes_count: Number(comic.likes_count || 0),
         views_total: Number(comic.views_total || 0),
         rating_avg: Number(comic.rating_avg || 5.0),
         rating_count: Number(comic.rating_count || 1),
