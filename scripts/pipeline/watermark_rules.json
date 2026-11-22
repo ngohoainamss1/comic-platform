@@ -2,12 +2,17 @@
   "default": {
     "match_threshold": 0.78,
     "flat_std_threshold": 18.0,
+    "blocked_hash_distance": 6,
+    "drop_thin_banners": true,
+    "blocked_url_keywords": ["banner", "quangcao", "credit", "luottruyen-qc"],
     "crop_top": 0,
     "crop_bottom": 0
   },
+  "blocked_hashes": [],
   "domains": {
-    "vi-du-nguon-co-banner-duoi.com": {
-      "crop_bottom": 45
+    "luottruyen": {
+      "crop_top": 0,
+      "crop_bottom": 0
     }
   }
 }

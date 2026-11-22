@@ -787,9 +787,9 @@ def _process_job(
             raise RuntimeError(f"Toàn bộ {len(img_urls)} ảnh của chương đều trả về 404 Not Found.")
 
         if CLEAN_INPAGE_WATERMARKS:
-            inpage_wm_logs = clean_chapter_images(valid_raw_items, chapter_url=chap_url)
+            valid_raw_items, inpage_wm_logs = clean_chapter_images(valid_raw_items, chapter_url=chap_url)
             if inpage_wm_logs:
-                print(f"     [Làm sạch watermark trong trang] {len(inpage_wm_logs)} trang ({', '.join(inpage_wm_logs[:5])})")
+                print(f"     [Làm sạch watermark & banner] {len(inpage_wm_logs)} mục ({', '.join(inpage_wm_logs[:6])})")
 
         branded_paths, removed_wm_logs = apply_chapter_branding(
             valid_raw_items,

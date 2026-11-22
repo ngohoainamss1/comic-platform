@@ -15,6 +15,7 @@ except ImportError:
 PIPELINE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_RULES_PATH = os.path.join(PIPELINE_DIR, "watermark_rules.json")
 DEFAULT_TEMPLATES_DIR = os.path.join(PIPELINE_DIR, "templates")
+DEFAULT_BLOCKED_DIR = os.path.join(PIPELINE_DIR, "blocked_pages")
 
 FONT_CANDIDATES = (
     "assets/fonts/Roboto-Bold.ttf",
@@ -28,6 +29,21 @@ FONT_CANDIDATES = (
 _CACHE_LOCK = threading.Lock()
 _RULES_CACHE: dict | None = None
 _TEMPLATES_CACHE: list[dict] | None = None
+_BLOCKED_PAGES_CACHE: list[dict] | None = None
+
+
+def _compute_dhash(pil_img: Image.Image, hash_size: int = 8) -> int:
+    gray = pil_img.convert("L").resize((hash_size + 1, hash_size), Image.Resampling.LANCZOS)
+    arr = np.asarray(gray, dtype=np.int16)
+    diff = arr[:, 1:] > arr[:, :-1]
+    val = 0
+    for bit in diff.flatten():
+        val = (val << 1) | int(bool(bit))
+    return val
+
+
+def _hamming(h1: int, h2: int) -> int:
+    return (h1 ^ h2).bit_count()
 
 
 def _load_rules(rules_path: str = DEFAULT_RULES_PATH) -> dict:
@@ -45,6 +61,53 @@ def _load_rules(rules_path: str = DEFAULT_RULES_PATH) -> dict:
         except Exception:
             _RULES_CACHE = {"domains": {}, "default": {}}
         return _RULES_CACHE
+
+
+def _load_blocked_pages(
+    blocked_dir: str = DEFAULT_BLOCKED_DIR,
+    rules: dict | None = None,
+) -> list[dict]:
+    """
+    Nạp danh sách ảnh banner/credit cần xóa toàn trang (kể cả khi nằm giữa chap).
+    Thả file ảnh banner mẫu vào thư mục `scripts/pipeline/blocked_pages/`.
+    """
+    global _BLOCKED_PAGES_CACHE
+    with _CACHE_LOCK:
+        if _BLOCKED_PAGES_CACHE is not None:
+            return _BLOCKED_PAGES_CACHE
+
+        entries: list[dict] = []
+        if os.path.isdir(blocked_dir):
+            for fname in sorted(os.listdir(blocked_dir)):
+                if not fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                    continue
+                fpath = os.path.join(blocked_dir, fname)
+                try:
+                    with Image.open(fpath) as im:
+                        w, h = im.size
+                        if w <= 0 or h <= 0:
+                            continue
+                        entries.append(
+                            {
+                                "name": fname,
+                                "hash": _compute_dhash(im),
+                                "aspect": w / float(h),
+                            }
+                        )
+                except Exception:
+                    continue
+
+        for raw in (rules or {}).get("blocked_hashes", []) or []:
+            s = str(raw).strip().lower().removeprefix("0x")
+            if not s:
+                continue
+            try:
+                entries.append({"name": f"hash:{s[:8]}", "hash": int(s, 16), "aspect": None})
+            except ValueError:
+                continue
+
+        _BLOCKED_PAGES_CACHE = entries
+        return _BLOCKED_PAGES_CACHE
 
 
 def _load_templates(templates_dir: str = DEFAULT_TEMPLATES_DIR) -> list[dict]:
@@ -87,6 +150,50 @@ def _get_domain_rule(source_url: str, rules: dict) -> dict:
         if key.lower() in host and isinstance(cfg, dict):
             merged.update(cfg)
     return merged
+
+
+def _should_drop_banner_page(
+    img_path: str,
+    img_url: str,
+    rule: dict,
+    blocked_pages: list[dict],
+    allow_heuristic: bool = True,
+) -> tuple[bool, str]:
+    low_url = (img_url or "").lower()
+    for kw in rule.get("blocked_url_keywords", []) or []:
+        k = str(kw).strip().lower()
+        if k and k in low_url:
+            return True, f"drop-url({k})"
+
+    try:
+        with Image.open(img_path) as im:
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                return True, "drop-invalid"
+
+            aspect = w / float(h)
+
+            if blocked_pages:
+                cur_hash = _compute_dhash(im)
+                max_dist = int(rule.get("blocked_hash_distance", 6) or 6)
+                for bp in blocked_pages:
+                    if _hamming(cur_hash, bp["hash"]) <= max_dist:
+                        bp_aspect = bp.get("aspect")
+                        if bp_aspect is None:
+                            return True, f"drop-match({bp['name']})"
+                        ratio_diff = abs(aspect - bp_aspect) / max(aspect, bp_aspect)
+                        if ratio_diff <= 0.28:
+                            return True, f"drop-match({bp['name']})"
+
+            if allow_heuristic and rule.get("drop_thin_banners", True):
+                if h < 110 or w < 180:
+                    return True, f"drop-tiny({w}x{h})"
+                if aspect >= 3.2 and h <= 320:
+                    return True, f"drop-thin-banner({w}x{h})"
+    except Exception:
+        return False, ""
+
+    return False, ""
 
 
 def _nms_boxes(boxes: list[tuple[int, int, int, int, float]], iou_thresh: float = 0.35):
@@ -185,47 +292,85 @@ def _is_near_edge_or_corner(x: int, y: int, w: int, h: int, iw: int, ih: int) ->
     return near_x or near_y
 
 
-def remove_hsv_watermark_text(img_bgr: np.ndarray) -> np.ndarray:
-    """
-    Tự động phát hiện và xóa chữ watermark màu xanh dương (LuotTruyen.Com) 
-    và màu đỏ/hồng (sub-text) bằng không gian màu HSV và Inpainting.
-    """
-    if cv2 is None:
+def _draw_brand_badge_bgr(img_bgr: np.ndarray, x: int, y: int, w: int, h: int, label: str) -> np.ndarray:
+    ih, iw = img_bgr.shape[:2]
+    pad = 4
+    bx1 = max(0, x - pad)
+    by1 = max(0, y - pad)
+    bx2 = min(iw, x + w + pad)
+    by2 = min(ih, y + h + pad)
+    bw, bh = bx2 - bx1, by2 - by1
+    if bw < 20 or bh < 14:
         return img_bgr
-    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 
-    # 1. Mask màu xanh dương đặc trưng của LuotTruyen.Com
-    lower_blue = np.array([95, 100, 100])
-    upper_blue = np.array([135, 255, 255])
-    mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
+    pil_img = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).convert("RGBA")
+    overlay = Image.new("RGBA", pil_img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
 
-    # 2. Mask màu đỏ / hồng đặc trưng của sub-text
-    lower_red1 = np.array([0, 100, 100])
-    upper_red1 = np.array([10, 255, 255])
-    mask_red1 = cv2.inRange(hsv, lower_red1, upper_red1)
+    radius = max(6, min(14, bh // 3))
+    draw.rounded_rectangle(
+        [bx1, by1, bx2, by2],
+        radius=radius,
+        fill=(14, 14, 22, 232),
+        outline=(244, 63, 94, 210),
+        width=2,
+    )
 
-    lower_red2 = np.array([170, 100, 100])
-    upper_red2 = np.array([180, 255, 255])
-    mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    font_size = max(11, min(26, int(bh * 0.52)))
+    font = ImageFont.load_default()
+    for fpath in FONT_CANDIDATES:
+        if os.path.exists(fpath):
+            try:
+                font = ImageFont.truetype(fpath, size=font_size)
+                break
+            except Exception:
+                continue
 
-    mask = cv2.bitwise_or(mask_blue, cv2.bitwise_or(mask_red1, mask_red2))
+    while font_size > 10 and draw.textlength(label, font=font) > bw - 14:
+        font_size -= 1
+        for fpath in FONT_CANDIDATES:
+            if os.path.exists(fpath):
+                try:
+                    font = ImageFont.truetype(fpath, size=font_size)
+                    break
+                except Exception:
+                    continue
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    draw.text(
+        (bx1 + bw // 2, by1 + bh // 2),
+        label,
+        fill=(244, 244, 245, 255),
+        font=font,
+        anchor="mm",
+    )
+
+    composed = Image.alpha_composite(pil_img, overlay).convert("RGB")
+    return cv2.cvtColor(np.asarray(composed), cv2.COLOR_RGB2BGR)
+
+
+def _inpaint_text_roi(img_bgr: np.ndarray, x: int, y: int, w: int, h: int) -> np.ndarray:
+    ih, iw = img_bgr.shape[:2]
+    pad = 4
+    rx1, ry1 = max(0, x - pad), max(0, y - pad)
+    rx2, ry2 = min(iw, x + w + pad), min(ih, y + h + pad)
+    roi = img_bgr[ry1:ry2, rx1:rx2]
+    if roi.size == 0:
+        return img_bgr
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    diff = cv2.absdiff(gray, blur)
+    _, mask = cv2.threshold(diff, 14, 255, cv2.THRESH_BINARY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.dilate(mask, kernel, iterations=1)
 
-    if cv2.countNonZero(mask) > 0:
-        img_bgr = cv2.inpaint(img_bgr, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    if np.count_nonzero(mask) < mask.size * 0.03:
+        mask[:, :] = 0
+        mask[pad : max(pad + 1, mask.shape[0] - pad), pad : max(pad + 1, mask.shape[1] - pad)] = 255
 
+    cleaned_roi = cv2.inpaint(roi, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    img_bgr[ry1:ry2, rx1:rx2] = cleaned_roi
     return img_bgr
-
-
-def is_promo_banner_image(img_path: str, img_url: str = "") -> tuple[bool, str]:
-    low_url = (img_url or "").lower()
-    promo_keywords = ["luottruyen", "quangcao", "banner", "vip", "donate", "nạp", "nap", "quang-cao"]
-    for kw in promo_keywords:
-        if kw in low_url:
-            return True, f"URL chứa từ khóa quảng cáo '{kw}'"
-    return False, ""
 
 
 def clean_image_watermarks(
@@ -237,11 +382,6 @@ def clean_image_watermarks(
     if cv2 is None or not os.path.exists(img_path):
         return False, ""
 
-    # Kiểm tra xem có phải ảnh banner quảng cáo riêng lẻ không
-    is_promo, promo_reason = is_promo_banner_image(img_path, source_url)
-    if is_promo:
-        return True, f"drop_promo({promo_reason})"
-
     rules = _load_rules(rules_path)
     rule = _get_domain_rule(source_url, rules)
     templates = _load_templates(templates_dir)
@@ -249,7 +389,11 @@ def clean_image_watermarks(
     crop_top = int(rule.get("crop_top", 0) or 0)
     crop_bottom = int(rule.get("crop_bottom", 0) or 0)
     threshold = float(rule.get("match_threshold", 0.78) or 0.78)
+    flat_std_limit = float(rule.get("flat_std_threshold", 18.0) or 18.0)
     brand_label = (os.getenv("BRAND_SITE_NAME", "VinaReader").strip() or "VinaReader").upper()
+
+    if crop_top <= 0 and crop_bottom <= 0 and not templates:
+        return False, ""
 
     img = cv2.imread(img_path, cv2.IMREAD_COLOR)
     if img is None:
@@ -258,12 +402,6 @@ def clean_image_watermarks(
     changed = False
     actions: list[str] = []
 
-    # 1. Tự động xóa chữ watermark qua HSV (LuotTruyen.Com xanh + đỏ)
-    img = remove_hsv_watermark_text(img)
-    changed = True
-    actions.append("hsv_text_clean")
-
-    # 2. Cắt mép banner cố định nếu có rule
     ih, iw = img.shape[:2]
     if (crop_top > 0 or crop_bottom > 0) and ih > (crop_top + crop_bottom + 240):
         y1 = max(0, crop_top)
@@ -272,7 +410,6 @@ def clean_image_watermarks(
         changed = True
         actions.append(f"crop({crop_top},{crop_bottom})")
 
-    # 3. Template matching cho các logo/banner tùy chỉnh trong templates/
     if templates:
         host = (urlparse(source_url or "").netloc or "").lower()
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -280,8 +417,16 @@ def clean_image_watermarks(
         ih, iw = img.shape[:2]
 
         for x, y, w, h, _score in matches:
-            std_val, _med_bgr = _sample_border_stats(img, x, y, w, h)
-            if std_val <= 18.0:
+            std_val, med_bgr = _sample_border_stats(img, x, y, w, h)
+            if std_val <= flat_std_limit:
+                pad = 2
+                cv2.rectangle(
+                    img,
+                    (max(0, x - pad), max(0, y - pad)),
+                    (min(iw - 1, x + w + pad), min(ih - 1, y + h + pad)),
+                    med_bgr,
+                    thickness=-1,
+                )
                 actions.append("fill")
                 changed = True
             elif _is_near_edge_or_corner(x, y, w, h, iw, ih):
@@ -289,11 +434,7 @@ def clean_image_watermarks(
                 actions.append("cover")
                 changed = True
             else:
-                roi = img[max(0, y - 4):min(ih, y + h + 4), max(0, x - 4):min(iw, x + w + 4)]
-                if roi.size > 0:
-                    img[max(0, y - 4):min(ih, y + h + 4), max(0, x - 4):min(iw, x + w + 4)] = cv2.inpaint(
-                        roi, np.ones(roi.shape[:2], dtype=np.uint8) * 255, 3, cv2.INPAINT_TELEA
-                    )
+                img = _inpaint_text_roi(img, x, y, w, h)
                 actions.append("inpaint")
                 changed = True
 
@@ -306,26 +447,47 @@ def clean_image_watermarks(
 def clean_chapter_images(
     raw_items: list[tuple[str, str]],
     chapter_url: str = "",
-) -> list[str]:
-    if cv2 is None:
-        return []
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """
+    1. Lọc bỏ các ảnh banner rời / quảng cáo chèn ở đầu, giữa hoặc cuối chap.
+    2. Làm sạch watermark nằm trong từng trang truyện còn lại.
+    Trả về: (filtered_items, logs)
+    """
+    rules = _load_rules()
+    blocked_pages = _load_blocked_pages(rules=rules)
+    allow_heuristic = len(raw_items) > 3
+
+    kept_items: list[tuple[str, str]] = []
     logs: list[str] = []
-    valid_cleaned_items: list[tuple[str, str]] = []
 
     for idx, (img_path, img_url) in enumerate(raw_items, start=1):
-        try:
-            is_promo, _ = is_promo_banner_image(img_path, chapter_url or img_url)
-            if is_promo:
-                logs.append(f"Trang #{idx}: drop_promo_banner")
-                try:
-                    os.remove(img_path)
-                except Exception:
-                    pass
-                continue
+        source = chapter_url or img_url
+        rule = _get_domain_rule(source, rules)
 
-            changed, action = clean_image_watermarks(img_path, source_url=chapter_url or img_url)
+        should_drop, drop_reason = _should_drop_banner_page(
+            img_path,
+            img_url,
+            rule=rule,
+            blocked_pages=blocked_pages,
+            allow_heuristic=allow_heuristic,
+        )
+        if should_drop:
+            logs.append(f"Trang #{idx}: {drop_reason}")
+            try:
+                os.remove(img_path)
+            except Exception:
+                pass
+            continue
+
+        try:
+            changed, action = clean_image_watermarks(img_path, source_url=source)
             if changed:
                 logs.append(f"Trang #{idx}: {action}")
         except Exception:
-            continue
-    return logs
+            pass
+
+        kept_items.append((img_path, img_url))
+
+    if not kept_items and raw_items:
+        return list(raw_items), logs
+    return kept_items, logs
