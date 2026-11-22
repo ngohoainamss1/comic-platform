@@ -1764,6 +1764,40 @@ export function App() {
                   </div>
                 )}
 
+                {/* CÓ THỂ BẠN SẼ THÍCH */}
+                <div className="mt-8 space-y-4">
+                  <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase flex items-center gap-2 border-l-4 border-mag-500 pl-3">
+                    <Flame className="w-5 h-5 text-mag-400" /> CÓ THỂ BẠN SẼ THÍCH
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {comics.slice(0, 6).map((rc) => (
+                      <div
+                        key={rc.id}
+                        onClick={() => openComicDetail(rc.slug)}
+                        className="cursor-pointer group bg-bgc-layer1 p-2.5 rounded-lg border border-bd-default hover:border-lav-500 flex items-center gap-3 transition"
+                      >
+                        <img
+                          src={resolveAssetUrl(rc.cover_url)}
+                          alt={rc.title}
+                          className="w-16 h-22 rounded object-cover bg-bgc-layer2 shrink-0 border border-bd-default"
+                        />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-xs sm:text-sm font-semibold text-txt-primary line-clamp-1 group-hover:text-lav-400">
+                            {rc.title}
+                          </p>
+                          <p className="text-[11px] text-txt-secondary line-clamp-2">
+                            {rc.description || 'Truyện hay cập nhật mới nhất...'}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-txt-secondary pt-1">
+                            <span>👁 {formatViews(rc.views_total)}</span>
+                            <span>⭐ {rc.rating_avg.toFixed(1)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* BÌNH LUẬN */}
                 <div className="mt-8 space-y-4">
                   <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase">
