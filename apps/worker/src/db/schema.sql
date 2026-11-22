@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS comics (
     cover_gh_path TEXT DEFAULT '',
     status TEXT DEFAULT 'ongoing',
     author_id INTEGER DEFAULT NULL,
+    is_featured INTEGER DEFAULT 0,
+    is_hidden INTEGER DEFAULT 0,
     views_day INTEGER DEFAULT 0,
     views_week INTEGER DEFAULT 0,
     views_month INTEGER DEFAULT 0,
@@ -84,25 +86,6 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
     FOREIGN KEY (source_id) REFERENCES sync_sources(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_comics_updated ON comics(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id);
-CREATE INDEX IF NOT EXISTS idx_comics_top_day ON comics(views_day DESC);
-CREATE INDEX IF NOT EXISTS idx_comics_top_week ON comics(views_week DESC);
-CREATE INDEX IF NOT EXISTS idx_comics_top_month ON comics(views_month DESC);
-CREATE INDEX IF NOT EXISTS idx_chapters_comic ON chapters(comic_id, chapter_number DESC);
-CREATE INDEX IF NOT EXISTS idx_pages_chapter ON chapter_pages(chapter_id, page_index ASC);
-CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status, created_at ASC);
-
-INSERT OR IGNORE INTO genres (slug, name) VALUES
-('hanh-dong', 'Hành Động'), ('chuyen-sinh', 'Chuyển Sinh'), ('ngon-tinh', 'Ngôn Tình'),
-('hoc-duong', 'Học Đường'), ('kinh-di', 'Kinh Dị'), ('manhwa', 'Manhwa'),
-('manga', 'Manga'), ('manhua', 'Manhua'), ('dam-my', 'Đam Mỹ'),
-('bach-hop', 'Bách Hợp'), ('trinh-tham', 'Trinh Thám'), ('hai-huoc', 'Hài Hước'),
-('phieu-luu', 'Phiêu Lưu'), ('gia-tuong', 'Giả Tưởng'), ('doi-thuong', 'Đời Thường'),
-('the-thao', 'Thể Thao'), ('vo-thuat', 'Võ Thuật'), ('co-dai', 'Cổ Đại'),
-('he-thong', 'Hệ Thống'), ('trong-sinh', 'Trọng Sinh'), ('hau-cung', 'Hậu Cung'),
-('one-shot', 'One Shot');
-
 CREATE TABLE IF NOT EXISTS comic_watchlists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     comic_id INTEGER NOT NULL UNIQUE,
@@ -121,4 +104,46 @@ CREATE TABLE IF NOT EXISTS comic_watchlists (
     FOREIGN KEY (source_id) REFERENCES sync_sources(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS chapter_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comic_id INTEGER NOT NULL,
+    chapter_id INTEGER DEFAULT NULL,
+    reason TEXT NOT NULL,
+    detail TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS site_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_comics_updated ON comics(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id);
+CREATE INDEX IF NOT EXISTS idx_comics_top_day ON comics(views_day DESC);
+CREATE INDEX IF NOT EXISTS idx_comics_top_week ON comics(views_week DESC);
+CREATE INDEX IF NOT EXISTS idx_comics_top_month ON comics(views_month DESC);
+CREATE INDEX IF NOT EXISTS idx_chapters_comic ON chapters(comic_id, chapter_number DESC);
+CREATE INDEX IF NOT EXISTS idx_pages_chapter ON chapter_pages(chapter_id, page_index ASC);
+CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_watchlist_due ON comic_watchlists(status, next_check_at ASC, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON chapter_reports(status, created_at DESC);
+
+INSERT OR IGNORE INTO genres (slug, name) VALUES
+('hanh-dong', 'Hành Động'), ('chuyen-sinh', 'Chuyển Sinh'), ('ngon-tinh', 'Ngôn Tình'),
+('hoc-duong', 'Học Đường'), ('kinh-di', 'Kinh Dị'), ('manhwa', 'Manhwa'),
+('manga', 'Manga'), ('manhua', 'Manhua'), ('dam-my', 'Đam Mỹ'),
+('bach-hop', 'Bách Hợp'), ('trinh-tham', 'Trinh Thám'), ('hai-huoc', 'Hài Hước'),
+('phieu-luu', 'Phiêu Lưu'), ('gia-tuong', 'Giả Tưởng'), ('doi-thuong', 'Đời Thường'),
+('the-thao', 'Thể Thao'), ('vo-thuat', 'Võ Thuật'), ('co-dai', 'Cổ Đại'),
+('he-thong', 'Hệ Thống'), ('trong-sinh', 'Trọng Sinh'), ('hau-cung', 'Hậu Cung'),
+('one-shot', 'One Shot');
+
+INSERT OR IGNORE INTO site_settings (key, value) VALUES
+('site_name', 'VinaReader'),
+('announcement_enabled', '0'),
+('announcement_text', ''),
+('maintenance_mode', '0');

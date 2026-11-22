@@ -1,10 +1,14 @@
 import type { Context, Next } from 'hono';
 import type { Env } from '../types';
 
-const RATE_LIMIT_MAX = 60;
+const RATE_LIMIT_MAX = 80;
 const WINDOW_SECONDS = 60;
 
 export async function rateLimitMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
+  if (c.req.path.startsWith('/api/admin')) {
+    return next();
+  }
+
   const ip = c.req.header('CF-Connecting-IP') || '127.0.0.1';
   if (ip === '127.0.0.1' || ip === '::1') {
     return next();
@@ -26,29 +30,19 @@ export async function rateLimitMiddleware(c: Context<{ Bindings: Env }>, next: N
 
     if (count >= RATE_LIMIT_MAX) {
       return c.json(
-        {
-          success: false,
-          message: 'Bạn thao tác quá nhanh. Vui lòng thử lại sau 1 phút.',
-        },
+        { success: false, message: 'Bạn thao tác quá nhanh. Vui lòng thử lại sau 1 phút.' },
         429,
-        {
-          'Retry-After': String(WINDOW_SECONDS),
-        }
+        { 'Retry-After': String(WINDOW_SECONDS) }
       );
     }
 
     const nextCount = count + 1;
     const newRes = new Response(String(nextCount), {
-      headers: {
-        'Cache-Control': `public, max-age=${WINDOW_SECONDS}`,
-        'Content-Type': 'text/plain',
-      },
+      headers: { 'Cache-Control': `public, max-age=${WINDOW_SECONDS}`, 'Content-Type': 'text/plain' },
     });
 
     c.executionCtx.waitUntil(cache.put(cacheKey, newRes));
-  } catch {
-    // Bỏ qua nếu Cache API tạm gián đoạn
-  }
+  } catch {}
 
   return next();
 }

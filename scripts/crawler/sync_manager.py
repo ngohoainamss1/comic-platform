@@ -374,7 +374,7 @@ def upsert_watchlist(
                 next_check_at, last_checked_at, last_new_chapter_at, consecutive_errors, status
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?,
-                datetime('now', '+' || ? || ' minutes'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, ?
+                datetime('now', '+' || ? || ' minutes'), CURRENT_TIMESTAMP, NULL, 0, ?
             )
             ON CONFLICT(comic_id) DO UPDATE SET
                 source_id = excluded.source_id,
@@ -585,19 +585,62 @@ def sync_author(db_state: dict, author_name: str) -> int | None:
     return int(row[0][0]) if row else None
 
 
+GENRE_ALIAS_MAP: dict[str, tuple[str, str]] = {
+    "action": ("hanh-dong", "Hành Động"),
+    "adventure": ("phieu-luu", "Phiêu Lưu"),
+    "comedy": ("hai-huoc", "Hài Hước"),
+    "drama": ("drama", "Drama"),
+    "fantasy": ("gia-tuong", "Giả Tưởng"),
+    "horror": ("kinh-di", "Kinh Dị"),
+    "mystery": ("trinh-tham", "Trinh Thám"),
+    "romance": ("ngon-tinh", "Ngôn Tình"),
+    "school-life": ("hoc-duong", "Học Đường"),
+    "school": ("hoc-duong", "Học Đường"),
+    "slice-of-life": ("doi-thuong", "Đời Thường"),
+    "sports": ("the-thao", "Thể Thao"),
+    "martial-arts": ("vo-thuat", "Võ Thuật"),
+    "historical": ("co-dai", "Cổ Đại"),
+    "harem": ("hau-cung", "Hậu Cung"),
+    "isekai": ("chuyen-sinh", "Chuyển Sinh"),
+    "reincarnation": ("trong-sinh", "Trọng Sinh"),
+    "system": ("he-thong", "Hệ Thống"),
+    "yaoi": ("dam-my", "Đam Mỹ"),
+    "bl": ("dam-my", "Đam Mỹ"),
+    "yuri": ("bach-hop", "Bách Hợp"),
+    "gl": ("bach-hop", "Bách Hợp"),
+    "oneshot": ("one-shot", "One Shot"),
+    "webtoon": ("manhwa", "Manhwa"),
+    "truyen-mau": ("truyen-mau", "Truyện Màu"),
+    "tu-tien": ("tu-tien", "Tu Tiên"),
+    "xuyen-khong": ("chuyen-sinh", "Chuyển Sinh"),
+    "huyen-huyen": ("gia-tuong", "Giả Tưởng"),
+    "shounen": ("shounen", "Shounen"),
+    "shoujo": ("shoujo", "Shoujo"),
+    "seinen": ("seinen", "Seinen"),
+    "supernatural": ("sieu-nhien", "Siêu Nhiên"),
+}
+
+
 def sync_comic_genres(db_state: dict, comic_id: int, raw_genres: list[str]):
     if not raw_genres:
         return
     for raw_genre in raw_genres:
-        clean_name = re.sub(r"\s+", " ", (raw_genre or "")).strip(" ,;-|")
+        clean_name = re.sub(r"\s+", " ", (raw_genre or "")).strip(" ,;-|#")
         if not clean_name:
             continue
-        g_slug = normalize_vn_slug(clean_name)
-        if not g_slug:
+        raw_slug = normalize_vn_slug(clean_name)
+        if not raw_slug:
             continue
-        # Tự động thêm thể loại mới nếu chưa tồn tại trong DB
-        db_exec(db_state, "INSERT OR IGNORE INTO genres (slug, name) VALUES (?, ?)", [g_slug, clean_name])
-        g_row = db_exec(db_state, "SELECT id FROM genres WHERE slug = ? OR lower(name) = lower(?) LIMIT 1", [g_slug, clean_name]).rows
+        if raw_slug in GENRE_ALIAS_MAP:
+            g_slug, canonical_name = GENRE_ALIAS_MAP[raw_slug]
+        else:
+            g_slug, canonical_name = raw_slug, clean_name
+        db_exec(db_state, "INSERT OR IGNORE INTO genres (slug, name) VALUES (?, ?)", [g_slug, canonical_name])
+        g_row = db_exec(
+            db_state,
+            "SELECT id FROM genres WHERE slug = ? OR lower(name) = lower(?) LIMIT 1",
+            [g_slug, canonical_name],
+        ).rows
         if g_row:
             db_exec(
                 db_state,
@@ -942,6 +985,35 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
                 print(f"[Auto-Healing] Đã hồi sinh {healed_count} chương lỗi cũ để thử lại.")
 
         # 2. Quét theo chế độ
+        if mode == "backfill-genres":
+            bf_rows = db_exec(
+                db_state,
+                """
+                SELECT w.comic_id, w.source_comic_url, s.base_url, s.feed_url, c.title
+                FROM comic_watchlists w
+                JOIN sync_sources s ON w.source_id = s.id
+                JOIN comics c ON c.id = w.comic_id
+                WHERE NOT EXISTS (SELECT 1 FROM comic_genres cg WHERE cg.comic_id = w.comic_id)
+                LIMIT ?
+                """,
+                [WATCHLIST_SCAN_LIMIT * 2],
+            ).rows
+            print(f"[Backfill Genres] Tìm thấy {len(bf_rows)} bộ truyện chưa có thể loại...")
+            updated_cnt = 0
+            for row in bf_rows:
+                cid, c_url, b_url, f_url, c_title = int(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4])
+                try:
+                    adapter = get_adapter(b_url, f_url)
+                    detail = adapter.fetch_comic_metadata(c_url)
+                    if detail.genres:
+                        sync_comic_genres(db_state, cid, detail.genres)
+                        updated_cnt += 1
+                        print(f"  [OK] {c_title}: {', '.join(detail.genres)}")
+                except Exception as bf_err:
+                    print(f"  [Lỗi] {c_title}: {bf_err}")
+            print(f"[Backfill Genres] Đã bổ sung thể loại cho {updated_cnt}/{len(bf_rows)} bộ truyện.")
+            return
+
         if mode == "single-url":
             parsed = urlparse(single_comic_url)
             origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -1144,7 +1216,7 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="auto",
-        choices=["auto", "watch-only", "deep-sweep", "single-url"],
+        choices=["auto", "watch-only", "deep-sweep", "single-url", "backfill-genres"],
         help="Chế độ chạy crawler",
     )
     parser.add_argument("--max-chapters", type=int, default=BATCH_LIMIT, help="Số chương tối đa xử lý trong 1 phiên")

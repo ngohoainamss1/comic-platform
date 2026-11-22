@@ -309,22 +309,39 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         raw_genres = [
             g.get_text(" ", strip=True)
             for g in soup.select(
-                ".kind p.col-xs-8 a, .kind .col-xs-8 a, .genres a, .genres-content a, "
-                ".tags a, .list-info a[href*='the-loai'], .detail-info a[href*='the-loai'], "
-                ".comic-info a[href*='the-loai'], a[href*='/the-loai/'], a[href*='/genre/']"
+                ".kind p.col-xs-8 a, .kind .col-xs-8 a, li.kind a, .kind a, "
+                ".genres a, .genres-content a, .genre-list a, .category a, .categories a, "
+                ".tags a, .tag-list a, .list01 a, .list-tag a, "
+                ".list-info a[href*='the-loai'], .detail-info a[href*='the-loai'], "
+                ".comic-info a[href*='the-loai'], a[href*='/the-loai'], "
+                "a[href*='/genre/'], a[href*='/genres/'], a[href*='/tag/'], a[href*='/category/']"
             )
             if g.get_text(" ", strip=True)
         ]
-        skip_genre_tokens = {"tất cả", "all", "đang cập nhật", "truyện tranh", "thể loại"}
+        if not raw_genres:
+            for row in soup.select(".list-info li, .detail-info li, .info-item, tr, .meta-data"):
+                txt = re.sub(r"\s+", " ", row.get_text(" ", strip=True))
+                m_gen = re.match(r"^(?:thể loại|genres?|categories?|tags?)\s*[:：]\s*(.+)$", txt, re.IGNORECASE)
+                if m_gen:
+                    parts = [p.strip() for p in re.split(r"[,;/|•·]", m_gen.group(1)) if p.strip()]
+                    raw_genres.extend(parts)
+                    break
+
+        skip_genre_tokens = {
+            "tất cả", "all", "đang cập nhật", "truyện tranh", "thể loại",
+            "home", "trang chủ", "hot", "mới cập nhật", "full", "hoàn thành",
+        }
         genres: list[str] = []
         seen_g: set[str] = set()
         for g_name in raw_genres:
-            clean_g = re.sub(r"\s+", " ", g_name).strip(" ,;-|")
+            clean_g = re.sub(r"\s+", " ", g_name).strip(" ,;-|#")
             low_g = clean_g.lower()
             if not clean_g or len(clean_g) > 45 or low_g in skip_genre_tokens or low_g in seen_g:
                 continue
             seen_g.add(low_g)
             genres.append(clean_g)
+        if not genres:
+            print(f"[Cảnh báo thể loại] Không bóc tách được thể loại tại {comic_url}")
 
         author = ""
         author_el = soup.select_one(

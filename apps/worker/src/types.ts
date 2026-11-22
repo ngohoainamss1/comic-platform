@@ -7,6 +7,9 @@ export interface Env {
   TG_BOT_TOKEN: string;
   GH_TOKEN: string;
   GH_BACKUP_REPO: string;
+  ADMIN_PASSWORD?: string;
+  GH_WORKFLOW_REPO?: string;
+  ALLOWED_ORIGINS?: string;
 }
 
 export interface ComicRow {
@@ -18,6 +21,8 @@ export interface ComicRow {
   cover_file_id: string;
   cover_gh_path: string;
   status: string;
+  is_featured: number;
+  is_hidden: number;
   views_day: number;
   views_week: number;
   views_month: number;

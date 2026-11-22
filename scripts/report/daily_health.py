@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timezone, timedelta
 import httpx
 import libsql_client
 from dotenv import load_dotenv
@@ -20,10 +21,7 @@ def run_daily_report():
             "SELECT COUNT(*), COALESCE(SUM(views_day), 0), COALESCE(SUM(views_total), 0) FROM comics"
         ).rows[0]
         total_comics, views_day, views_total = int(stats[0]), int(stats[1]), int(stats[2])
-
-        chaps_today = db.execute(
-            "SELECT COUNT(*) FROM chapters WHERE created_at >= datetime('now', '-1 day')"
-        ).rows[0][0]
+        chaps_today = db.execute("SELECT COUNT(*) FROM chapters WHERE created_at >= datetime('now', '-1 day')").rows[0][0]
 
         mirror_lines = []
         if MIRROR_GIST_URL:
@@ -35,20 +33,29 @@ def run_daily_report():
                         try:
                             r = client.get(m_url, timeout=5.0)
                             ms = int((time.perf_counter() - t0) * 1000)
-                            status_icon = "✅" if r.status_code < 400 else "⚠️"
-                            mirror_lines.append(f"{status_icon} {m_url} ({ms}ms)")
+                            mirror_lines.append(f"{'✅' if r.status_code < 400 else '⚠️'} {m_url} ({ms}ms)")
                         except Exception:
                             mirror_lines.append(f"❌ {m_url} (Bị chặn / Timeout)")
             except Exception as e:
                 mirror_lines.append(f"⚠️ Không đọc được Gist: {e}")
 
+        now_vn = datetime.now(timezone(timedelta(hours=7)))
+        tomorrow_vn = now_vn + timedelta(days=1)
+        reset_notes = ["ngày"]
         db.execute("UPDATE comics SET views_day = 0")
+        if tomorrow_vn.weekday() == 0:
+            db.execute("UPDATE comics SET views_week = 0")
+            reset_notes.append("tuần")
+        if tomorrow_vn.day == 1:
+            db.execute("UPDATE comics SET views_month = 0")
+            reset_notes.append("tháng")
 
         report = (
             f"<b>📊 BÁO CÁO HỆ THỐNG VINAREADER (23:00)</b>\n"
             f"• Tổng số bộ truyện: <b>{total_comics}</b>\n"
             f"• Chương đăng 24h qua: <b>+{chaps_today}</b>\n"
-            f"• Lượt đọc hôm nay: <b>{views_day:,}</b> (Tổng: {views_total:,})\n\n"
+            f"• Lượt đọc hôm nay: <b>{views_day:,}</b> (Tổng: {views_total:,})\n"
+            f"• Đã reset BXH: <b>{', '.join(reset_notes)}</b>\n\n"
             f"<b>🌐 Trạng thái Tên miền Chống chặn:</b>\n"
             + ("\n".join(mirror_lines) if mirror_lines else "Chưa cấu hình mirror.")
         )
