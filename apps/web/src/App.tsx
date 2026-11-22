@@ -1742,6 +1742,37 @@ export function App() {
                     onRequireAuth={() => setAuthModalOpen(true)}
                   />
                 </div>
+
+                {/* CÙNG TÁC GIẢ */}
+                {selectedComic.same_author_comics && selectedComic.same_author_comics.length > 0 && (
+                  <div className="mt-8 space-y-4">
+                    <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase flex items-center gap-2 border-l-4 border-lav-500 pl-3">
+                      CÙNG TÁC GIẢ ({selectedComic.same_author_comics.length})
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {selectedComic.same_author_comics.map((rel) => (
+                        <div
+                          key={rel.id}
+                          onClick={() => openComicDetail(rel.slug)}
+                          className="cursor-pointer group rounded-lg bg-bgc-layer1 border border-bd-default hover:border-lav-500 overflow-hidden transition flex flex-col"
+                        >
+                          <div className="aspect-[2/3] overflow-hidden bg-bgc-layer2">
+                            <img
+                              src={resolveAssetUrl(rel.cover_url)}
+                              alt={rel.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition"
+                            />
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs font-semibold text-txt-primary line-clamp-2 group-hover:text-lav-400">
+                              {rel.title}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </section>

@@ -367,7 +367,8 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         author_el = soup.select_one(
             ".author p.col-xs-8, .author .col-xs-8, .author-content, "
             ".info-item .author, li.author p:last-child, "
-            ".detail-info a[href*='tac-gia'], a[href*='/tac-gia/'], a[href*='/author/']"
+            ".detail-info a[href*='tac-gia'], a[href*='/tac-gia/'], a[href*='/author/'], "
+            "a[href*='/authors/']"
         )
         if author_el:
             author = re.sub(r"\s+", " ", author_el.get_text(" ", strip=True)).strip()
@@ -378,6 +379,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
                 if m_au:
                     author = m_au.group(1).strip()
                     break
+        author = re.sub(r"\s+\d+$", "", author).strip()
         if author.lower() in {"đang cập nhật", "updating", "unknown", "n/a", "chưa rõ", "none", "-", ""}:
             author = ""
 
