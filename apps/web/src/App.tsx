@@ -137,6 +137,7 @@ export function App() {
   // Chi tiết truyện & Trình đọc
   const [selectedComic, setSelectedComic] = useState<ComicDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [showAllGenres, setShowAllGenres] = useState(false);
   const [chapterSearch, setChapterSearch] = useState('');
   const [chapterSortAsc, setChapterSortAsc] = useState(false);
   const [userRatingHover, setUserRatingHover] = useState(0);
@@ -1565,8 +1566,8 @@ export function App() {
                       </time>
 
                       <div className="text-txt-secondary w-28 self-start pt-0.5 font-medium">Thể loại:</div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedComic.genres.map((g) => (
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {(showAllGenres ? selectedComic.genres : selectedComic.genres.slice(0, 8)).map((g) => (
                           <button
                             key={g.id}
                             onClick={() => {
@@ -1580,6 +1581,22 @@ export function App() {
                             {g.name}
                           </button>
                         ))}
+                        {selectedComic.genres.length > 8 && !showAllGenres && (
+                          <button
+                            onClick={() => setShowAllGenres(true)}
+                            className="inline-flex items-center rounded-md border border-white/20 bg-black/30 hover:border-lav-500 px-2 py-1 text-xs font-bold text-txt-focus transition"
+                          >
+                            ... +{selectedComic.genres.length - 8}
+                          </button>
+                        )}
+                        {showAllGenres && selectedComic.genres.length > 8 && (
+                          <button
+                            onClick={() => setShowAllGenres(false)}
+                            className="inline-flex items-center rounded-md border border-white/20 bg-black/30 hover:border-lav-500 px-2 py-1 text-xs font-bold text-txt-secondary transition"
+                          >
+                            Thu gọn
+                          </button>
+                        )}
                       </div>
 
                       <div className="text-txt-secondary w-28 font-medium">Tổng quan:</div>
