@@ -69,12 +69,9 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   // Auto-scroll state & refs
   const [autoScrollPps, setAutoScrollPps] = useState<number>(0);
-  const [autoScrollPaused, setAutoScrollPaused] = useState(false);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number>(0);
   const subPixelRef = useRef<number>(0);
-  const pauseResumeTimerRef = useRef<number | null>(null);
-  const isUserTouchingRef = useRef(false);
 
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const verticalContainerRef = useRef<HTMLDivElement | null>(null);
@@ -88,7 +85,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   useEffect(() => {
     setCurrentPageIdx(0);
     setAutoScrollPps(0);
-    setAutoScrollPaused(false);
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [data.chapter.id]);
 
@@ -144,7 +140,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   // Vòng lặp requestAnimationFrame cho Auto-scroll siêu mượt, loại bỏ xung đột scroll-behavior: smooth trên mobile
   useEffect(() => {
-    if (autoScrollPps <= 0 || autoScrollPaused || readMode !== 'vertical') {
+    if (autoScrollPps <= 0 || readMode !== 'vertical') {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       return;
@@ -163,11 +159,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - lastFrameRef.current) / 1000);
       lastFrameRef.current = now;
-
-      if (isUserTouchingRef.current) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
 
       const docHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
       const maxScrollY = docHeight - window.innerHeight;
@@ -193,53 +184,19 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       htmlEl.style.scrollBehavior = prevHtmlScroll;
       bodyEl.style.scrollBehavior = prevBodyScroll;
     };
-  }, [autoScrollPps, autoScrollPaused, readMode]);
-
-  // Xử lý touch/wheel thông minh tránh xung đột khi bấm nút điều khiển
-  useEffect(() => {
-    if (autoScrollPps <= 0 || readMode !== 'vertical') return;
-
-    const isControlTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return false;
-      return Boolean(target.closest('button, input, a, header, footer, [data-reader-control]'));
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (isControlTarget(e.target)) return;
-      isUserTouchingRef.current = true;
-      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
-    };
-
-    const handleTouchEnd = () => {
-      if (!isUserTouchingRef.current) return;
-      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
-      pauseResumeTimerRef.current = window.setTimeout(() => {
-        isUserTouchingRef.current = false;
-      }, 800);
-    };
-
-    const handleWheel = () => {
-      isUserTouchingRef.current = true;
-      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
-      pauseResumeTimerRef.current = window.setTimeout(() => {
-        isUserTouchingRef.current = false;
-      }, 800);
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchend', handleTouchEnd, { passive: true });
-    window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
-    window.addEventListener('wheel', handleWheel, { passive: true });
-
-    return () => {
-      isUserTouchingRef.current = false;
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchend', handleTouchEnd);
-      window.removeEventListener('touchcancel', handleTouchEnd);
-      window.removeEventListener('wheel', handleWheel);
-      if (pauseResumeTimerRef.current) window.clearTimeout(pauseResumeTimerRef.current);
-    };
   }, [autoScrollPps, readMode]);
+
+  // Dừng tự cuộn khi người dùng lăn chuột (wheel)
+  useEffect(() => {
+    if (autoScrollPps <= 0) return;
+    const handleWheel = () => {
+      setAutoScrollPps(0);
+    };
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, [autoScrollPps]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -517,31 +474,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         )}
       </main>
 
-      {/* THANH ĐIỀU KHIỂN NỔI CỰC KỲ DỄ BẤM KHI TỰ CUỘN (FLOATING AUTO-SCROLL CONTROL PILL) */}
+      {/* NÚT DỪNG NỔI GỌN GÀNG Ở GÓC PHẢI DƯỚI KHI TỰ CUỘN */}
       {autoScrollPps > 0 && readMode === 'vertical' && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#14141d]/95 backdrop-blur-2xl border-2 border-rose-500 px-5 py-3 rounded-full shadow-[0_10px_30px_rgba(244,63,94,0.4)] flex items-center gap-3.5 animate-bounce-short">
-          <span className="text-xs font-black text-rose-400 flex items-center gap-1.5">
-            <ScrollText className="w-4 h-4 animate-spin" /> Đang tự cuộn ({Math.round(autoScrollPps / 60)}x)
-          </span>
-          <button
-            onClick={() => setAutoScrollPps((p) => Math.max(30, p - 30))}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-extrabold text-sm flex items-center justify-center transition"
-            title="Giảm tốc"
-          >
-            -
-          </button>
+        <div className="fixed bottom-24 right-4 z-50">
           <button
             onClick={() => setAutoScrollPps(0)}
-            className="px-5 py-2 rounded-full bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 text-white text-xs font-black shadow-lg shadow-rose-500/50 flex items-center gap-1.5 transition cursor-pointer"
+            className="bg-rose-500/95 hover:bg-rose-600 backdrop-blur-xl px-4 py-2.5 rounded-full text-xs font-black text-white shadow-[0_8px_25px_rgba(244,63,94,0.5)] flex items-center gap-1.5 transition animate-pulse cursor-pointer border border-white/20 min-h-[40px]"
           >
-            <Pause className="w-4 h-4" /> ⏹ DỪNG NGAY
-          </button>
-          <button
-            onClick={() => setAutoScrollPps((p) => Math.min(450, p + 30))}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-extrabold text-sm flex items-center justify-center transition"
-            title="Tăng tốc"
-          >
-            +
+            <Pause className="w-4 h-4" /> Dừng tự cuộn
           </button>
         </div>
       )}
