@@ -43,8 +43,8 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
     const currentUser = c.get('user');
     const currentUserId = currentUser ? currentUser.id : 0;
 
-    let chapterCond = 'c.chapter_id IS NULL';
-    const args: any[] = [comicId];
+    let chapterCond = '1 = 1';
+    const args: any[] = [currentUserId, comicId];
     if (chapterId !== null && Number.isFinite(chapterId)) {
       chapterCond = 'c.chapter_id = ?';
       args.push(chapterId);
@@ -56,29 +56,32 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
         SELECT c.id, c.comic_id, c.chapter_id, c.user_id, c.parent_id, c.reply_to_name,
                c.content, c.meme_url, c.likes_count, c.is_deleted, c.created_at,
                u.username, u.display_name, u.avatar_seed, u.role,
+               ch.chapter_number,
                (SELECT COUNT(*) FROM comments r WHERE r.parent_id = c.id AND r.is_deleted = 0) AS reply_count,
                (SELECT COUNT(*) FROM comment_likes l WHERE l.comment_id = c.id AND l.user_id = ?) AS liked_by_me
         FROM comments c
         JOIN users u ON u.id = c.user_id
+        LEFT JOIN chapters ch ON ch.id = c.chapter_id
         WHERE c.comic_id = ? AND ${chapterCond} AND c.parent_id IS NULL AND c.is_deleted = 0
         ORDER BY c.created_at DESC
         LIMIT ? OFFSET ?
       `,
-      args: [currentUserId, ...args, limit, offset],
+      args: [...args, limit, offset],
     });
 
     const comments = await Promise.all(
       topRes.rows.map(async (row) => {
         const commentId = Number(row.id);
-        // Lấy các replies cho comment gốc này
         const repliesRes = await db.execute({
           sql: `
             SELECT r.id, r.comic_id, r.chapter_id, r.user_id, r.parent_id, r.reply_to_name,
                    r.content, r.meme_url, r.likes_count, r.is_deleted, r.created_at,
                    u.username, u.display_name, u.avatar_seed, u.role,
+                   ch.chapter_number,
                    (SELECT COUNT(*) FROM comment_likes l WHERE l.comment_id = r.id AND l.user_id = ?) AS liked_by_me
             FROM comments r
             JOIN users u ON u.id = r.user_id
+            LEFT JOIN chapters ch ON ch.id = r.chapter_id
             WHERE r.parent_id = ? AND r.is_deleted = 0
             ORDER BY r.created_at ASC
           `,
@@ -89,6 +92,7 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
           id: Number(rr.id),
           comic_id: Number(rr.comic_id),
           chapter_id: rr.chapter_id !== null ? Number(rr.chapter_id) : null,
+          chapter_number: rr.chapter_number !== null && rr.chapter_number !== undefined ? Number(rr.chapter_number) : null,
           user_id: Number(rr.user_id),
           parent_id: Number(rr.parent_id),
           reply_to_name: rr.reply_to_name ? String(rr.reply_to_name) : null,
@@ -110,6 +114,7 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
           id: commentId,
           comic_id: Number(row.comic_id),
           chapter_id: row.chapter_id !== null ? Number(row.chapter_id) : null,
+          chapter_number: row.chapter_number !== null && row.chapter_number !== undefined ? Number(row.chapter_number) : null,
           user_id: Number(row.user_id),
           parent_id: null,
           reply_to_name: null,
@@ -169,7 +174,6 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
 
-    // Nếu có parentId, kiểm tra và làm phẳng cấu trúc 2 cấp (nếu parent là reply thì trỏ về root)
     if (parentId !== null && Number.isFinite(parentId)) {
       const parentRes = await db.execute({
         sql: 'SELECT id, parent_id FROM comments WHERE id = ? LIMIT 1',
@@ -192,6 +196,17 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       args: [comicId, chapterId, authUser.id, parentId, replyToName, content, memeUrl],
     });
 
+    let chapNum = null;
+    if (chapterId !== null) {
+      const chRes = await db.execute({
+        sql: 'SELECT chapter_number FROM chapters WHERE id = ? LIMIT 1',
+        args: [chapterId],
+      });
+      if (chRes.rows.length > 0) {
+        chapNum = Number(chRes.rows[0].chapter_number);
+      }
+    }
+
     const newRes = await db.execute({
       sql: `
         SELECT c.id, c.comic_id, c.chapter_id, c.user_id, c.parent_id, c.reply_to_name,
@@ -211,6 +226,7 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       id: Number(row.id),
       comic_id: Number(row.comic_id),
       chapter_id: row.chapter_id !== null ? Number(row.chapter_id) : null,
+      chapter_number: chapNum,
       user_id: Number(row.user_id),
       parent_id: row.parent_id !== null ? Number(row.parent_id) : null,
       reply_to_name: row.reply_to_name ? String(row.reply_to_name) : null,

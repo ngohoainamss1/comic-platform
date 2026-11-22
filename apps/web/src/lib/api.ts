@@ -496,6 +496,7 @@ export interface CommentReply {
   id: number;
   comic_id: number;
   chapter_id: number | null;
+  chapter_number?: number | null;
   user_id: number;
   parent_id: number;
   reply_to_name: string | null;
@@ -517,6 +518,7 @@ export interface CommentItem {
   id: number;
   comic_id: number;
   chapter_id: number | null;
+  chapter_number?: number | null;
   user_id: number;
   parent_id: null;
   reply_to_name: null;
