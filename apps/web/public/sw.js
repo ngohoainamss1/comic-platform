@@ -1,5 +1,5 @@
-const SHELL_CACHE = 'vinareader-shell-v2';
-const MIRROR_CACHE = 'vinareader-mirrors-v2';
+const SHELL_CACHE = 'vinareader-shell-v3';
+const MIRROR_CACHE = 'vinareader-mirrors-v3';
 let mirrorList = [];
 let activeMirrorIndex = 0;
 
@@ -20,7 +20,13 @@ self.addEventListener('activate', (event) => {
           }
         })
       )
-    ).then(() => self.clients.claim())
+    ).then(() => {
+      self.clients.claim();
+      // Notify all clients to reload for fresh genres update
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => client.navigate(client.url));
+      });
+    })
   );
 });
 

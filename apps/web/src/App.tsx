@@ -946,6 +946,27 @@ export function App() {
               </div>
             </div>
 
+            {/* Sticky Alphabet Quick Jump Bar */}
+            <div className="sticky top-16 z-20 bg-bgc-base/95 backdrop-blur py-2.5 px-3 rounded-xl border border-bd-default flex flex-wrap gap-1 sm:gap-1.5 justify-center shadow-md">
+              {['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'].map((letter) => {
+                const hasGenres = genres.some((g) => {
+                  const first = g.name.charAt(0).toUpperCase();
+                  if (letter === '#') return !/[A-Z]/.test(first);
+                  return first === letter;
+                });
+                if (!hasGenres) return null;
+                return (
+                  <a
+                    key={letter}
+                    href={`#genre-letter-${letter}`}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-bgc-layer2 hover:bg-lav-500 hover:text-white text-txt-primary text-xs sm:text-sm font-bold flex items-center justify-center transition"
+                  >
+                    {letter}
+                  </a>
+                );
+              })}
+            </div>
+
             <div className="space-y-6">
               {['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'].map((letter) => {
                 const matchedGenres = genres.filter((g) => {
@@ -960,7 +981,7 @@ export function App() {
                 if (matchedGenres.length === 0) return null;
 
                 return (
-                  <div key={letter} className="space-y-3 p-4 rounded-2xl bg-bgc-layer1 border border-bd-default">
+                  <div key={letter} id={`genre-letter-${letter}`} className="space-y-3 p-4 rounded-2xl bg-bgc-layer1 border border-bd-default scroll-mt-24">
                     <div className="text-lav-400 font-black text-lg border-b border-bd-default pb-1">
                       {letter}
                     </div>
