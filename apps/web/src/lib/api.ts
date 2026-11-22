@@ -239,6 +239,36 @@ export async function fetchGenres(): Promise<GenreItem[]> {
   return res.data || [];
 }
 
+export type LeaderboardCategory = 'manga' | 'artists' | 'translator' | 'member' | 'waifu';
+export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all-time';
+
+export interface LeaderboardItem {
+  id: number | string;
+  slug: string;
+  title?: string;
+  name?: string;
+  cover_url?: string;
+  avatar_seed?: string;
+  views?: number;
+  likes_count?: number;
+  comic_count?: number;
+  score?: number;
+  status?: string;
+  latest_chapter?: number | null;
+}
+
+export interface LeaderboardPayload {
+  category: LeaderboardCategory;
+  period: LeaderboardPeriod;
+  items: LeaderboardItem[];
+  pagination: PaginationMeta & { startRank: number };
+}
+
+export async function fetchLeaderboard(category: LeaderboardCategory, period: LeaderboardPeriod = 'daily', page = 1): Promise<LeaderboardPayload> {
+  const res = await requestJson<{ data: LeaderboardPayload }>(`/api/leaderboard/${category}?period=${period}&page=${page}`);
+  return res.data;
+}
+
 export async function fetchComics(params: FetchComicsParams = {}): Promise<{ items: ComicSummary[]; pagination: PaginationMeta }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set('page', String(params.page));

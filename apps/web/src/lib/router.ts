@@ -1,4 +1,6 @@
-export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin' | 'summon' | 'profile' | 'genres-directory';
+export type LeaderboardCategory = 'manga' | 'artists' | 'translator' | 'member' | 'waifu';
+export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all-time';
+export type ViewMode = 'home' | 'browse' | 'ranking' | 'library' | 'detail' | 'reader' | 'admin' | 'summon' | 'profile' | 'genres-directory' | 'leaderboard';
 export type ModalType = 'filter' | 'backup' | null;
 
 export interface RouteState {
@@ -13,6 +15,8 @@ export interface RouteState {
   inc?: string[];
   exc?: string[];
   page?: number;
+  leaderboardCategory?: LeaderboardCategory;
+  leaderboardPeriod?: LeaderboardPeriod;
 }
 
 export function parseRouteFromLocation(loc: Location = window.location): RouteState {
@@ -31,8 +35,22 @@ export function parseRouteFromLocation(loc: Location = window.location): RouteSt
     return { view: 'summon' };
   }
 
-  if (path === '/leaderboard') {
-    return { view: 'ranking', sort: 'top-day' };
+  if (path === '/leaderboard' || path.startsWith('/leaderboard/')) {
+    const parts = path.replace('/leaderboard', '').replace(/^\//, '').split('/');
+    const cat = parts[0] as LeaderboardCategory;
+    const category: LeaderboardCategory = ['manga', 'artists', 'translator', 'member', 'waifu'].includes(cat) ? cat : 'manga';
+    const periodParam = searchParams.get('period') as LeaderboardPeriod;
+    const period: LeaderboardPeriod = ['daily', 'weekly', 'monthly', 'all-time'].includes(periodParam) ? periodParam : 'daily';
+    const pageStr = searchParams.get('page');
+    const pageNum = pageStr ? Number(pageStr) : 1;
+    const page = Number.isFinite(pageNum) && pageNum > 1 ? pageNum : undefined;
+
+    return {
+      view: 'leaderboard',
+      leaderboardCategory: category,
+      leaderboardPeriod: period,
+      page,
+    };
   }
 
   if (path.startsWith('/profile')) {
@@ -121,11 +139,13 @@ export function buildUrlFromRoute(route: RouteState): string {
       const qs = params.toString();
       return qs ? `/browse?${qs}` : '/browse';
     }
-    case 'ranking': {
-      if (route.sort && route.sort !== 'top-day') params.set('sort', route.sort);
+    case 'leaderboard': {
+      const cat = route.leaderboardCategory || 'manga';
+      const period = route.leaderboardPeriod || 'daily';
+      if (period !== 'daily') params.set('period', period);
       if (route.page && route.page > 1) params.set('page', String(route.page));
       const qs = params.toString();
-      return qs ? `/ranking?${qs}` : '/ranking';
+      return qs ? `/leaderboard/${cat}?${qs}` : `/leaderboard/${cat}`;
     }
     case 'library': {
       if (route.libraryTab && route.libraryTab !== 'bookmarks') params.set('tab', route.libraryTab);

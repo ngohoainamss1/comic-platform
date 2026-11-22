@@ -60,6 +60,8 @@ import {
   setUserToken,
   toggleBookmark,
   type UserProfile,
+  type LeaderboardCategory,
+  type LeaderboardPeriod,
 } from './lib/api';
 import { getAvatarUrl } from './lib/memes';
 import {
@@ -74,6 +76,7 @@ import { ReaderView } from './components/ReaderView';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { CommentSection } from './components/CommentSection';
+import { LeaderboardView } from './components/LeaderboardView';
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -140,6 +143,8 @@ export function App() {
   const [incGenres, setIncGenres] = useState<string[]>(initRoute.inc || []);
   const [excGenres, setExcGenres] = useState<string[]>(initRoute.exc || []);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [leaderboardCategory, setLeaderboardCategory] = useState<LeaderboardCategory>(initRoute.leaderboardCategory || 'manga');
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState<LeaderboardPeriod>(initRoute.leaderboardPeriod || 'daily');
 
   // Chi tiết truyện & Trình đọc
   const [selectedComic, setSelectedComic] = useState<ComicDetail | null>(null);
@@ -179,6 +184,8 @@ export function App() {
     if (newRoute.inc) setIncGenres(newRoute.inc);
     if (newRoute.exc) setExcGenres(newRoute.exc);
     if (newRoute.page) setPage(newRoute.page);
+    if (newRoute.leaderboardCategory) setLeaderboardCategory(newRoute.leaderboardCategory);
+    if (newRoute.leaderboardPeriod) setLeaderboardPeriod(newRoute.leaderboardPeriod);
   };
 
   const loadSettings = useCallback(async () => {
@@ -240,6 +247,8 @@ export function App() {
       if (route.inc) setIncGenres(route.inc);
       if (route.exc) setExcGenres(route.exc);
       if (route.page) setPage(route.page);
+      if (route.leaderboardCategory) setLeaderboardCategory(route.leaderboardCategory);
+      if (route.leaderboardPeriod) setLeaderboardPeriod(route.leaderboardPeriod);
 
       if (route.view === 'detail' && route.slug && selectedComic?.slug !== route.slug) {
         setDetailLoading(true);
@@ -760,15 +769,14 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setPage(1);
-                  setSort('top-day');
-                  navigateTo({ view: 'ranking', sort: 'top-day', page: 1 });
+                  navigateTo({ view: 'leaderboard', leaderboardCategory: 'manga', leaderboardPeriod: 'daily', page: 1 });
                 }}
                 className={`relative inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs sm:text-sm font-semibold transition ${
-                  view === 'ranking'
-                    ? 'border-lav-500 text-lav-400'
+                  view === 'leaderboard'
+                    ? 'border-mag-500 text-txt-primary font-semibold'
                     : 'border-transparent text-txt-secondary hover:text-txt-primary'
                 }`}
+                aria-current={view === 'leaderboard' ? 'page' : undefined}
               >
                 <Trophy className="w-3.5 h-3.5" />
                 <span>BXH</span>
@@ -927,6 +935,16 @@ export function App() {
 
       {/* ==================== MAIN CONTENT ==================== */}
       <main className="container-page mx-auto px-4 pt-4 md:pt-6 space-y-8">
+        {/* ==================== BẢNG XẾP HẠNG (LEADERBOARD) ==================== */}
+        {view === 'leaderboard' && (
+          <LeaderboardView
+            category={leaderboardCategory}
+            period={leaderboardPeriod}
+            page={page}
+            onNavigate={navigateTo}
+            onOpenComic={openComicDetail}
+          />
+        )}
         {/* ==================== TRANG THỂ LOẠI CHI TIẾT (GENRES DIRECTORY) ==================== */}
         {view === 'genres-directory' && (
           <section className="space-y-6 max-w-5xl mx-auto pb-20">
@@ -2009,7 +2027,7 @@ export function App() {
                   <Home className="w-4 h-4 text-lav-400" /> Trang chủ
                 </button>
                 <button
-                  onClick={() => navigateTo({ view: 'ranking', sort: 'top-day' })}
+                  onClick={() => navigateTo({ view: 'leaderboard', leaderboardCategory: 'manga', leaderboardPeriod: 'daily', page: 1 })}
                   className="w-full px-3 py-2.5 rounded-lg hover:bg-bgc-layer2 flex items-center gap-2.5 text-left"
                 >
                   <Trophy className="w-4 h-4 text-mag-400" /> Bảng xếp hạng

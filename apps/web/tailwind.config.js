@@ -34,6 +34,9 @@ export default {
           400: '#f472b6',
           500: '#ec4899',
         },
+        btn: {
+          primary: '#d8b4fe',
+        },
       },
     },
   },

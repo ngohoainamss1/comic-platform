@@ -107,6 +107,7 @@ apiRoutes.get('/comics', async (c) => {
       case 'top-day': orderBy = 'c.views_day DESC, c.updated_at DESC'; break;
       case 'top-week': orderBy = 'c.views_week DESC, c.updated_at DESC'; break;
       case 'top-month': orderBy = 'c.views_month DESC, c.updated_at DESC'; break;
+      case 'all-time': orderBy = 'c.views_total DESC, c.updated_at DESC'; break;
       case 'rating': orderBy = 'c.rating_avg DESC, c.views_total DESC'; break;
       default: orderBy = 'c.updated_at DESC';
     }
@@ -409,5 +410,200 @@ apiRoutes.post('/reports', async (c) => {
     return c.json({ success: true, message: 'Đã ghi nhận báo lỗi. Cảm ơn bạn!' });
   } catch {
     return c.json({ success: false, message: 'Không thể gửi báo lỗi lúc này.' }, 500);
+  }
+});
+
+apiRoutes.get('/leaderboard/:category', async (c) => {
+  try {
+    const category = c.req.param('category');
+    const period = c.req.query('period') || 'daily';
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+    const limit = 30;
+    const offset = (page - 1) * limit;
+
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    let viewCol = 'views_day';
+    if (period === 'weekly') viewCol = 'views_week';
+    else if (period === 'monthly') viewCol = 'views_month';
+    else if (period === 'all-time') viewCol = 'views_total';
+
+    const ttl = Number(c.env.IMAGE_TOKEN_TTL_SECONDS || 900);
+
+    if (category === 'manga' || category === 'waifu') {
+      const countRes = await db.execute('SELECT COUNT(*) AS total FROM comics WHERE COALESCE(is_hidden, 0) = 0');
+      const total = Number(countRes.rows[0]?.total || 0);
+
+      const listRes = await db.execute({
+        sql: `
+          SELECT id, slug, title, cover_file_id, cover_gh_path, status, ${viewCol} AS views, likes_count,
+                 (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = comics.id) AS latest_chapter
+          FROM comics
+          WHERE COALESCE(is_hidden, 0) = 0
+          ORDER BY ${viewCol} DESC, likes_count DESC, updated_at DESC
+          LIMIT ? OFFSET ?
+        `,
+        args: [limit, offset],
+      });
+
+      const items = await Promise.all(
+        listRes.rows.map(async (row) => {
+          const cf = String(row.cover_file_id || '');
+          const cg = String(row.cover_gh_path || '');
+          return {
+            id: Number(row.id),
+            slug: String(row.slug),
+            title: String(row.title),
+            cover_url: cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '',
+            views: Number(row.views || 0),
+            likes_count: Number(row.likes_count || 0),
+            status: String(row.status),
+            latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+          };
+        })
+      );
+
+      c.header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+      return c.json({
+        success: true,
+        data: {
+          category,
+          period,
+          items,
+          pagination: { page, limit, total, totalPages: Math.ceil(total / limit), startRank: offset + 1 },
+        },
+      });
+    } else if (category === 'artists') {
+      const authorsRes = await db.execute({
+        sql: `
+          SELECT a.id, a.slug, a.name,
+                 COALESCE(SUM(c.${viewCol}), 0) AS total_views,
+                 COALESCE(SUM(c.likes_count), 0) AS total_likes,
+                 COUNT(c.id) AS comic_count,
+                 (SELECT c2.cover_file_id FROM comics c2 WHERE c2.author_id = a.id ORDER BY c2.${viewCol} DESC LIMIT 1) AS cover_file_id,
+                 (SELECT c2.cover_gh_path FROM comics c2 WHERE c2.author_id = a.id ORDER BY c2.${viewCol} DESC LIMIT 1) AS cover_gh_path
+          FROM authors a
+          JOIN comics c ON c.author_id = a.id AND COALESCE(c.is_hidden, 0) = 0
+          GROUP BY a.id
+          ORDER BY total_views DESC, total_likes DESC
+          LIMIT ? OFFSET ?
+        `,
+        args: [limit, offset],
+      });
+
+      const items = await Promise.all(
+        authorsRes.rows.map(async (row) => {
+          const cf = String(row.cover_file_id || '');
+          const cg = String(row.cover_gh_path || '');
+          return {
+            id: Number(row.id),
+            slug: String(row.slug),
+            name: String(row.name),
+            views: Number(row.total_views || 0),
+            likes_count: Number(row.total_likes || 0),
+            comic_count: Number(row.comic_count || 0),
+            cover_url: cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '',
+          };
+        })
+      );
+
+      c.header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+      return c.json({
+        success: true,
+        data: {
+          category,
+          period,
+          items,
+          pagination: { page, limit, total: items.length, totalPages: 1, startRank: offset + 1 },
+        },
+      });
+    } else if (category === 'translator') {
+      const transRes = await db.execute({
+        sql: `
+          SELECT TRIM(translator) AS name,
+                 COALESCE(SUM(${viewCol}), 0) AS total_views,
+                 COALESCE(SUM(likes_count), 0) AS total_likes,
+                 COUNT(*) AS comic_count,
+                 (SELECT c2.cover_file_id FROM comics c2 WHERE TRIM(c2.translator) = TRIM(comics.translator) ORDER BY c2.${viewCol} DESC LIMIT 1) AS cover_file_id,
+                 (SELECT c2.cover_gh_path FROM comics c2 WHERE TRIM(c2.translator) = TRIM(comics.translator) ORDER BY c2.${viewCol} DESC LIMIT 1) AS cover_gh_path
+          FROM comics
+          WHERE TRIM(COALESCE(translator, '')) != '' AND COALESCE(is_hidden, 0) = 0
+          GROUP BY TRIM(translator)
+          ORDER BY total_views DESC, total_likes DESC
+          LIMIT ? OFFSET ?
+        `,
+        args: [limit, offset],
+      });
+
+      const items = await Promise.all(
+        transRes.rows.map(async (row) => {
+          const cf = String(row.cover_file_id || '');
+          const cg = String(row.cover_gh_path || '');
+          const name = String(row.name);
+          return {
+            id: name,
+            slug: name,
+            name: name,
+            views: Number(row.total_views || 0),
+            likes_count: Number(row.total_likes || 0),
+            comic_count: Number(row.comic_count || 0),
+            cover_url: cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '',
+          };
+        })
+      );
+
+      c.header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+      return c.json({
+        success: true,
+        data: {
+          category,
+          period,
+          items,
+          pagination: { page, limit, total: items.length, totalPages: 1, startRank: offset + 1 },
+        },
+      });
+    } else if (category === 'member') {
+      const usersRes = await db.execute({
+        sql: `
+          SELECT u.id, u.username, u.display_name, u.avatar_seed, u.role, u.created_at,
+                 (SELECT COUNT(*) FROM comments cm WHERE cm.user_id = u.id) AS comment_count
+          FROM users u
+          ORDER BY comment_count DESC
+          LIMIT ? OFFSET ?
+        `,
+        args: [limit, offset],
+      });
+
+      const items = usersRes.rows.map((row) => {
+        const comments = Number(row.comment_count || 0);
+        const score = comments * 25 + 100;
+        return {
+          id: Number(row.id),
+          slug: String(row.username),
+          name: String(row.display_name || row.username),
+          avatar_seed: String(row.avatar_seed || row.username),
+          role: String(row.role || 'user'),
+          score,
+          views: score,
+          comic_count: comments,
+        };
+      });
+
+      c.header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+      return c.json({
+        success: true,
+        data: {
+          category,
+          period,
+          items,
+          pagination: { page, limit, total: items.length, totalPages: 1, startRank: offset + 1 },
+        },
+      });
+    }
+
+    return c.json({ success: true, data: { category, period, items: [], pagination: { page: 1, limit: 30, total: 0, totalPages: 1, startRank: 1 } } });
+  } catch {
+    return c.json({ success: false, message: 'Không thể tải bảng xếp hạng.' }, 500);
   }
 });
