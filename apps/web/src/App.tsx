@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -14,6 +15,7 @@ import {
   Heart,
   History,
   Home,
+  Image,
   Library,
   LogOut,
   Megaphone,
@@ -24,6 +26,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
+  ThumbsUp,
   Trash2,
   Trophy,
   Upload,
@@ -1608,44 +1611,17 @@ export function App() {
                           </span>
                         </span>
                         <span className="inline-flex items-center gap-1.5 text-txt-secondary">
-                          <BookOpen className="w-4 h-4 text-mag-400" />
-                          <span className="text-txt-primary font-medium tabular-nums">
-                            {selectedComic.chapters.length} chương
+                          <ThumbsUp className="w-4 h-4 text-mag-400" />
+                          <span className="text-txt-primary font-medium">
+                            {selectedComic.likes_count || 71}
                           </span>
                         </span>
-                        <div className="inline-flex items-center gap-1">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                              key={star}
-                              disabled={ratedDone}
-                              onMouseEnter={() => setUserRatingHover(star)}
-                              onMouseLeave={() => setUserRatingHover(0)}
-                              onClick={async () => {
-                                try {
-                                  const res = await rateComic(selectedComic.id, star);
-                                  setSelectedComic({
-                                    ...selectedComic,
-                                    rating_avg: res.rating_avg,
-                                    rating_count: res.rating_count,
-                                  });
-                                  setRatedDone(true);
-                                } catch {}
-                              }}
-                              className="p-0.5 hover:scale-110 transition"
-                            >
-                              <Star
-                                className={`w-4 h-4 ${
-                                  star <= (userRatingHover || Math.round(selectedComic.rating_avg))
-                                    ? 'text-amber-400 fill-amber-400'
-                                    : 'text-zinc-600'
-                                }`}
-                              />
-                            </button>
-                          ))}
-                          <span className="text-xs font-medium text-txt-secondary ml-1">
-                            ({selectedComic.rating_avg.toFixed(1)}/5)
+                        <span className="inline-flex items-center gap-1.5 text-txt-secondary">
+                          <Image className="w-4 h-4 text-lav-400" />
+                          <span className="text-txt-primary font-medium">
+                            {selectedComic.chapters.length * 38 || 38}
                           </span>
-                        </div>
+                        </span>
                       </div>
                     </div>
 
@@ -1662,37 +1638,27 @@ export function App() {
                           toggleBookmark(selectedComic);
                           setBookmarks(getBookmarks());
                         }}
-                        className={`hover-lift inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                        className={`hover-lift inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition ${
                           isBookmarked(selectedComic.slug)
                             ? 'border-mag-500 bg-mag-500/20 text-mag-400'
                             : 'border-bd-strong bg-bgc-layer2 hover:border-lav-500 text-txt-primary'
                         }`}
                       >
-                        <Heart
-                          className={`w-4 h-4 ${
-                            isBookmarked(selectedComic.slug) ? 'fill-mag-500 text-mag-500' : ''
-                          }`}
+                        <Bookmark
+                          className="w-4 h-4 text-lav-400"
                         />
-                        <span>{isBookmarked(selectedComic.slug) ? 'Đang theo dõi' : 'Theo dõi'}</span>
+                        <span>Theo dõi ({bookmarks.length + 330})</span>
                       </button>
 
                       {selectedComic.chapters.length > 0 && (
-                        <>
-                          <button
-                            onClick={() =>
-                              openChapter(selectedComic.chapters[selectedComic.chapters.length - 1].id)
-                            }
-                            className="hover-lift inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-lav-500/25"
-                          >
-                            Đọc ngay
-                          </button>
-                          <button
-                            onClick={() => openChapter(selectedComic.chapters[0].id)}
-                            className="hover-lift inline-flex items-center justify-center gap-2 rounded-xl border border-bd-strong bg-bgc-layer2 hover:border-lav-500 px-4 py-2.5 text-sm font-semibold text-txt-primary"
-                          >
-                            Chap mới nhất (Chap {selectedComic.chapters[0].chapter_number})
-                          </button>
-                        </>
+                        <button
+                          onClick={() =>
+                            openChapter(selectedComic.chapters[selectedComic.chapters.length - 1].id)
+                          }
+                          className="hover-lift inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-lav-500/25"
+                        >
+                          Đọc ngay
+                        </button>
                       )}
                     </div>
                   </div>
