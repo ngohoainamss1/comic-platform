@@ -64,12 +64,37 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
       )`
     );
     await db.execute(
+      `CREATE TABLE IF NOT EXISTS user_bookmarks (
+        user_id INTEGER NOT NULL,
+        comic_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, comic_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE
+      )`
+    );
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS user_history (
+        user_id INTEGER NOT NULL,
+        comic_id INTEGER NOT NULL,
+        chapter_id INTEGER NOT NULL,
+        chapter_number REAL NOT NULL,
+        progress INTEGER DEFAULT 0,
+        total_pages INTEGER DEFAULT 0,
+        read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, comic_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE,
+        FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
+      )`
+    );
+    await db.execute(
       `CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(comic_id, chapter_id, parent_id, created_at DESC)`
     );
 
     try { await db.execute('ALTER TABLE comics ADD COLUMN is_featured INTEGER DEFAULT 0'); } catch {}
     try { await db.execute('ALTER TABLE comics ADD COLUMN is_hidden INTEGER DEFAULT 0'); } catch {}
-    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_name', 'VinaReader')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_name', 'VinaHentai')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_enabled', '0')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_text', '')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('maintenance_mode', '0')");

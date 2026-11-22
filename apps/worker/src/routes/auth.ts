@@ -195,3 +195,160 @@ authRoutes.patch('/profile', requireUserAuth, async (c) => {
     return c.json({ success: false, message: 'Không thể cập nhật hồ sơ.' }, 500);
   }
 });
+
+authRoutes.get('/library', requireUserAuth, async (c) => {
+  try {
+    const authUser = c.get('user');
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    const [bmRes, histRes] = await Promise.all([
+      db.execute({
+        sql: `
+          SELECT c.id, c.slug, c.title, c.description, c.cover_file_id, c.cover_gh_path,
+                 c.status, c.views_day, c.views_week, c.views_month, c.views_total,
+                 c.rating_avg, c.updated_at,
+                 (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter
+          FROM user_bookmarks b
+          JOIN comics c ON c.id = b.comic_id
+          WHERE b.user_id = ?
+          ORDER BY b.created_at DESC
+        `,
+        args: [authUser.id],
+      }),
+      db.execute({
+        sql: `
+          SELECT h.comic_id, h.chapter_id, h.chapter_number, h.progress, h.total_pages, h.read_at,
+                 c.slug, c.title, c.cover_file_id, c.cover_gh_path
+          FROM user_history h
+          JOIN comics c ON c.id = h.comic_id
+          WHERE h.user_id = ?
+          ORDER BY h.read_at DESC
+        `,
+        args: [authUser.id],
+      }),
+    ]);
+
+    const ttl = Number(c.env.IMAGE_TOKEN_TTL_SECONDS || 900);
+    const { signImageUrl } = await import('../utils/crypto');
+
+    const bookmarks = await Promise.all(
+      bmRes.rows.map(async (row) => {
+        const cf = String(row.cover_file_id || '');
+        const cg = String(row.cover_gh_path || '');
+        return {
+          id: Number(row.id),
+          slug: String(row.slug),
+          title: String(row.title),
+          description: String(row.description || ''),
+          cover_url: cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '',
+          status: String(row.status),
+          views_day: Number(row.views_day || 0),
+          views_week: Number(row.views_week || 0),
+          views_month: Number(row.views_month || 0),
+          views_total: Number(row.views_total || 0),
+          rating_avg: Number(row.rating_avg || 5.0),
+          latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+          updated_at: String(row.updated_at),
+        };
+      })
+    );
+
+    const history = await Promise.all(
+      histRes.rows.map(async (row) => {
+        const cf = String(row.cover_file_id || '');
+        const cg = String(row.cover_gh_path || '');
+        return {
+          slug: String(row.slug),
+          title: String(row.title),
+          cover_url: cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '',
+          chapter_id: Number(row.chapter_id),
+          chapter_number: Number(row.chapter_number),
+          progress: Number(row.progress || 0),
+          total_pages: Number(row.total_pages || 0),
+          read_at: new Date(String(row.read_at)).getTime(),
+        };
+      })
+    );
+
+    return c.json({ success: true, data: { bookmarks, history } });
+  } catch {
+    return c.json({ success: false, message: 'Không thể tải thư viện cá nhân.' }, 500);
+  }
+});
+
+authRoutes.post('/bookmarks', requireUserAuth, async (c) => {
+  try {
+    const authUser = c.get('user');
+    const body = (await c.req.json().catch(() => ({}))) as { comic_id?: number; action?: 'add' | 'remove' };
+    const comicId = Number(body.comic_id);
+    const action = body.action === 'remove' ? 'remove' : 'add';
+
+    if (!Number.isFinite(comicId) || comicId <= 0) {
+      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    if (action === 'remove') {
+      await db.execute({
+        sql: 'DELETE FROM user_bookmarks WHERE user_id = ? AND comic_id = ?',
+        args: [authUser.id, comicId],
+      });
+    } else {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO user_bookmarks (user_id, comic_id) VALUES (?, ?)',
+        args: [authUser.id, comicId],
+      });
+    }
+
+    return c.json({ success: true });
+  } catch {
+    return c.json({ success: false, message: 'Không thể cập nhật theo dõi.' }, 500);
+  }
+});
+
+authRoutes.post('/history', requireUserAuth, async (c) => {
+  try {
+    const authUser = c.get('user');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      comic_id?: number;
+      chapter_id?: number;
+      chapter_number?: number;
+      progress?: number;
+      total_pages?: number;
+    };
+
+    const comicId = Number(body.comic_id);
+    const chapterId = Number(body.chapter_id);
+    const chapterNumber = Number(body.chapter_number);
+    const progress = Number(body.progress || 0);
+    const totalPages = Number(body.total_pages || 0);
+
+    if (!Number.isFinite(comicId) || !Number.isFinite(chapterId)) {
+      return c.json({ success: false, message: 'Dữ liệu lịch sử không hợp lệ.' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    await db.execute({
+      sql: `
+        INSERT INTO user_history (user_id, comic_id, chapter_id, chapter_number, progress, total_pages, read_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, comic_id) DO UPDATE SET
+          chapter_id = excluded.chapter_id,
+          chapter_number = excluded.chapter_number,
+          progress = excluded.progress,
+          total_pages = excluded.total_pages,
+          read_at = CURRENT_TIMESTAMP
+      `,
+      args: [authUser.id, comicId, chapterId, chapterNumber, progress, totalPages],
+    });
+
+    return c.json({ success: true });
+  } catch {
+    return c.json({ success: false, message: 'Không thể lưu lịch sử đọc.' }, 500);
+  }
+});

@@ -639,3 +639,46 @@ export async function deleteComment(commentId: number): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function fetchUserLibrary(): Promise<{ bookmarks: ComicSummary[]; history: HistoryItem[] } | null> {
+  const token = getUserToken();
+  if (!token) return null;
+  try {
+    const res = await requestJson<{ data: { bookmarks: ComicSummary[]; history: HistoryItem[] } }>('/api/auth/library', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncCloudBookmark(comicId: number, action: 'add' | 'remove'): Promise<void> {
+  const token = getUserToken();
+  if (!token) return;
+  try {
+    await requestJson('/api/auth/bookmarks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ comic_id: comicId, action }),
+    });
+  } catch {}
+}
+
+export async function syncCloudHistory(payload: {
+  comic_id: number;
+  chapter_id: number;
+  chapter_number: number;
+  progress: number;
+  total_pages: number;
+}): Promise<void> {
+  const token = getUserToken();
+  if (!token) return;
+  try {
+    await requestJson('/api/auth/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
+}
