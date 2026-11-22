@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb } from '../db/client';
 import { ensureSchemaMigrated } from '../db/migrate';
+import { hashPassword, verifyPassword, signUserToken, toUtcIso } from '../utils/crypto';
 import { requireUserAuth, optionalUserAuth } from '../middleware/userAuth';
 
 export const commentsRoutes = new Hono<{
@@ -100,7 +101,7 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
           meme_url: rr.meme_url ? String(rr.meme_url) : null,
           likes_count: Number(rr.likes_count || 0),
           is_deleted: Number(rr.is_deleted || 0),
-          created_at: String(rr.created_at),
+          created_at: toUtcIso(String(rr.created_at)),
           liked_by_me: Number(rr.liked_by_me || 0) > 0,
           user: {
             username: String(rr.username),
@@ -122,7 +123,7 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
           meme_url: row.meme_url ? String(row.meme_url) : null,
           likes_count: Number(row.likes_count || 0),
           is_deleted: Number(row.is_deleted || 0),
-          created_at: String(row.created_at),
+          created_at: toUtcIso(String(row.created_at)),
           reply_count: Number(row.reply_count || 0),
           liked_by_me: Number(row.liked_by_me || 0) > 0,
           user: {
@@ -234,7 +235,7 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       meme_url: row.meme_url ? String(row.meme_url) : null,
       likes_count: Number(row.likes_count || 0),
       is_deleted: Number(row.is_deleted || 0),
-      created_at: String(row.created_at),
+      created_at: toUtcIso(String(row.created_at)),
       reply_count: 0,
       liked_by_me: false,
       user: {

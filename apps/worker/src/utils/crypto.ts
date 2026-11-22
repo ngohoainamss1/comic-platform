@@ -201,3 +201,13 @@ export async function verifyUserToken(
     return null;
   }
 }
+
+export function toUtcIso(raw: string | null): string {
+  if (!raw) return new Date().toISOString();
+  let s = String(raw).trim();
+  if (!s) return new Date().toISOString();
+  if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+    s = s.replace(' ', 'T') + 'Z';
+  }
+  return s;
+}
