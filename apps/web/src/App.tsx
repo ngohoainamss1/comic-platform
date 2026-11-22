@@ -981,45 +981,44 @@ export function App() {
                 if (matchedGenres.length === 0) return null;
 
                 return (
-                  <div key={letter} id={`genre-letter-${letter}`} className="space-y-3 p-4 rounded-2xl bg-bgc-layer1 border border-bd-default scroll-mt-24">
-                    <div className="text-lav-400 font-black text-lg border-b border-bd-default pb-1">
+                  <div key={letter} id={`genre-letter-${letter}`} className="scroll-mt-[calc(var(--site-header-height,98px)+68px)] rounded-xl border border-bd-default bg-bgc-layer2 p-2 lg:grid lg:grid-cols-[4.5rem_minmax(0,1fr)] lg:p-4">
+                    <h2 className="px-3 pb-1 pt-2 text-lg font-bold text-lav-500 lg:sticky lg:top-[calc(var(--genres-top)+64px)] lg:self-start lg:px-0 lg:pb-0 lg:pt-1 lg:text-4xl lg:font-semibold lg:leading-none">
                       {letter}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    </h2>
+                    <ul className="md:columns-2 md:gap-x-6 xl:columns-3 space-y-1">
                       {matchedGenres.map((g) => {
-                        const active = incGenres.includes(g.slug);
                         return (
-                          <div
-                            key={g.id}
-                            onClick={() => {
-                              setIncGenres([g.slug]);
-                              setExcGenres([]);
-                              setPage(1);
-                              navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
-                            }}
-                            className={`p-4 rounded-xl text-left transition border cursor-pointer space-y-1.5 ${
-                              active
-                                ? 'border-lav-500 bg-lav-500/20 text-txt-focus'
-                                : 'border-bd-default bg-bgc-layer2 hover:border-lav-500 text-txt-primary'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-bold text-sm sm:text-base text-white hover:text-lav-400">
-                                {g.name}
+                          <li key={g.id} className="break-inside-avoid">
+                            <div
+                              onClick={() => {
+                                setIncGenres([g.slug]);
+                                setExcGenres([]);
+                                setPage(1);
+                                navigateTo({ view: 'browse', inc: [g.slug], sort: 'latest', page: 1 });
+                              }}
+                              className="flex min-h-[44px] flex-col justify-center rounded-xl px-3 py-2 transition-colors pointer-fine:min-h-[36px] hover:bg-lav-500/10 cursor-pointer"
+                            >
+                              <span className="flex items-baseline gap-2">
+                                <span className="min-w-0 flex-1 break-words">
+                                  <span className="text-[16px] font-semibold text-white hover:text-lav-400">
+                                    {g.name}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-sm tabular-nums text-txt-secondary">
+                                  {(g.comic_count || 0).toLocaleString('vi-VN')} truyện
+                                </span>
+                                <ChevronRight className="h-4 w-4 shrink-0 self-center text-txt-tertiary" />
                               </span>
-                              <span className="text-xs font-semibold text-txt-secondary shrink-0">
-                                {(g.comic_count || 0).toLocaleString('vi-VN')} truyện &gt;
-                              </span>
+                              {g.description && (
+                                <span className="text-xs mt-1 block leading-normal text-txt-secondary line-clamp-2">
+                                  {g.description}
+                                </span>
+                              )}
                             </div>
-                            {g.description && (
-                              <p className="text-xs text-txt-secondary line-clamp-2 leading-relaxed">
-                                {g.description}
-                              </p>
-                            )}
-                          </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
                   </div>
                 );
               })}
