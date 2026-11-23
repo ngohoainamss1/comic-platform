@@ -12,40 +12,7 @@ function isAllowedRefererOrOrigin(
   workerHost: string,
   allowedOriginsEnv?: string
 ): boolean {
-  const source = originHeader || refererHeader;
-  if (!source) return true;
-
-  try {
-    const parsed = new URL(source);
-    const host = parsed.hostname.toLowerCase();
-
-    if (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === workerHost.toLowerCase() ||
-      host.endsWith('.pages.dev')
-    ) {
-      return true;
-    }
-
-    if (allowedOriginsEnv) {
-      const allowedList = allowedOriginsEnv
-        .split(',')
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean);
-
-      return allowedList.some((allowed) => {
-        if (allowed.startsWith('http://') || allowed.startsWith('https://')) {
-          return parsed.origin.toLowerCase() === allowed;
-        }
-        return host === allowed || host.endsWith(`.${allowed}`);
-      });
-    }
-
-    return false;
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 async function fetchFromTelegram(fileId: string, botToken: string): Promise<Response | null> {
