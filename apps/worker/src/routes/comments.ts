@@ -25,6 +25,48 @@ function isValidMemeUrl(url?: string | null): boolean {
   }
 }
 
+commentsRoutes.get('/recent', async (c) => {
+  try {
+    const limit = Math.min(Number(c.req.query('limit') || 20), 50);
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    const rs = await db.execute({
+      sql: `
+        SELECT
+          cm.id,
+          cm.content,
+          cm.meme_url,
+          cm.created_at,
+          cm.parent_id,
+          u.id AS user_id,
+          u.username,
+          u.display_name,
+          u.avatar_seed,
+          co.id AS comic_id,
+          co.slug AS comic_slug,
+          co.title AS comic_title,
+          co.cover_url AS comic_cover_url,
+          pu.display_name AS reply_to_name,
+          pu.username AS reply_to_username
+        FROM comments cm
+        LEFT JOIN users u ON cm.user_id = u.id
+        LEFT JOIN comics co ON cm.comic_id = co.id
+        LEFT JOIN comments pcm ON cm.parent_id = pcm.id
+        LEFT JOIN users pu ON pcm.user_id = pu.id
+        WHERE cm.is_deleted = 0
+        ORDER BY cm.created_at DESC
+        LIMIT ?
+      `,
+      args: [limit],
+    });
+
+    return c.json({ success: true, comments: rs.rows });
+  } catch (err: any) {
+    return c.json({ success: false, comments: [], message: err?.message || 'Lỗi server' }, 500);
+  }
+});
+
 commentsRoutes.get('/', optionalUserAuth, async (c) => {
   try {
     const comicId = Number(c.req.query('comic_id'));

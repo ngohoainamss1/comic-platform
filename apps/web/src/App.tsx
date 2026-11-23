@@ -77,6 +77,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { CommentSection } from './components/CommentSection';
 import { LeaderboardView } from './components/LeaderboardView';
+import { RecentCommentsWidget } from './components/RecentCommentsWidget';
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -1622,6 +1623,11 @@ export function App() {
                     ))}
                   </div>
                 </div>
+
+                {/* BÌNH LUẬN MỚI NHẤT */}
+                <RecentCommentsWidget
+                  onSelectComic={(slug) => openComicDetail(slug)}
+                />
               </aside>
             )}
           </div>

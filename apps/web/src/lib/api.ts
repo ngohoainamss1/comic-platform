@@ -721,3 +721,31 @@ export async function syncCloudHistory(payload: {
     });
   } catch {}
 }
+
+export interface RecentCommentItem {
+  id: number;
+  content: string;
+  meme_url?: string | null;
+  created_at: string;
+  parent_id?: number | null;
+  user_id?: number | null;
+  username?: string | null;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  avatar_seed?: string | null;
+  comic_id: number;
+  comic_slug: string;
+  comic_title: string;
+  comic_cover_url?: string | null;
+  reply_to_name?: string | null;
+  reply_to_username?: string | null;
+}
+
+export async function fetchRecentComments(limit = 20): Promise<RecentCommentItem[]> {
+  try {
+    const res = await requestJson<{ comments?: RecentCommentItem[] }>(`/api/comments/recent?limit=${limit}`);
+    return res.comments || [];
+  } catch {
+    return [];
+  }
+}
