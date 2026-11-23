@@ -44,9 +44,12 @@ export const RecentCommentsWidget: React.FC<RecentCommentsWidgetProps> = ({
       loadRecent();
     };
     window.addEventListener('comic:comment-posted', handleCommentPosted);
+    const interval = setInterval(loadRecent, 8000);
+
     return () => {
       mounted = false;
       window.removeEventListener('comic:comment-posted', handleCommentPosted);
+      clearInterval(interval);
     };
   }, []);
 
@@ -126,9 +129,9 @@ export const RecentCommentsWidget: React.FC<RecentCommentsWidgetProps> = ({
                         onSelectComic(item.comic_slug);
                       }}
                       className="truncate max-w-[38%] text-lav-400 hover:text-lav-300 font-medium"
-                      title={item.comic_title}
+                      title={`${item.comic_title}${item.chapter_number !== null && item.chapter_number !== undefined ? ` - Chap ${item.chapter_number}` : ''}`}
                     >
-                      {item.comic_title}
+                      {item.comic_title}{item.chapter_number !== null && item.chapter_number !== undefined ? ` (Chap ${item.chapter_number})` : ''}
                     </a>
                     <span className="ml-auto shrink-0 text-[11px] text-txt-secondary">
                       {formatShortTime(item.created_at)}

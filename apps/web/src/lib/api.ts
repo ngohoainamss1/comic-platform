@@ -738,6 +738,7 @@ export interface RecentCommentItem {
   comic_slug: string;
   comic_title: string;
   comic_cover_url?: string | null;
+  chapter_number?: number | null;
   reply_to_name?: string | null;
   reply_to_username?: string | null;
 }

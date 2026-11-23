@@ -47,11 +47,13 @@ commentsRoutes.get('/recent', async (c) => {
           co.slug AS comic_slug,
           co.title AS comic_title,
           co.cover_url AS comic_cover_url,
+          ch.chapter_number,
           pu.display_name AS reply_to_name,
           pu.username AS reply_to_username
         FROM comments cm
         LEFT JOIN users u ON cm.user_id = u.id
         LEFT JOIN comics co ON cm.comic_id = co.id
+        LEFT JOIN chapters ch ON cm.chapter_id = ch.id
         LEFT JOIN comments pcm ON cm.parent_id = pcm.id
         LEFT JOIN users pu ON pcm.user_id = pu.id
         WHERE cm.is_deleted = 0
