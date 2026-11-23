@@ -1117,12 +1117,12 @@ export function App() {
           </section>
         )}
 
-        {/* ==================== TRANG CHỦ: TRUYỆN ĐỀ CỬ ==================== */}
+        {/* ==================== TRANG CHỦ: TRUYỆN HENTAI HOT ==================== */}
         {view === 'home' && heroComics.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-base sm:text-lg font-bold uppercase tracking-wide text-txt-primary flex items-center gap-2 border-l-4 border-lav-500 pl-3">
-                <Sparkles className="w-4 h-4 text-lav-400" /> Truyện Đề Cử
+              <h2 className="text-txt-primary text-xl font-semibold uppercase flex items-center gap-2">
+                <Flame className="w-6 h-6 text-[#FF453A]" /> Truyện Hentai Hot
               </h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
@@ -1130,25 +1130,46 @@ export function App() {
                 <article
                   key={hc.id}
                   onClick={() => openComicDetail(hc.slug)}
-                  className="group cursor-pointer relative aspect-[2/3] rounded-lg overflow-hidden border border-bd-default hover:border-lav-500 bg-bgc-layer1 shadow-md transition"
+                  className="group cursor-pointer relative flex flex-col"
                 >
-                  <img
-                    src={resolveAssetUrl(hc.cover_url)}
-                    alt={hc.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
-                  <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-lav-500/90 text-[10px] font-bold text-white">
-                    HOT
-                  </span>
-                  <div className="absolute bottom-2 inset-x-2 space-y-0.5">
-                    <h3 className="text-xs font-semibold text-white line-clamp-2 group-hover:text-lav-400 transition leading-snug">
-                      {hc.title}
-                    </h3>
-                    <p className="text-[11px] font-medium text-txt-focus">
-                      {hc.latest_chapter !== null ? `Chap ${hc.latest_chapter}` : 'Mới'}
-                    </p>
+                  <div className="relative">
+                    <div className="ios-composite" style={{ transform: 'translateZ(0px)', backfaceVisibility: 'hidden', WebkitFontSmoothing: 'antialiased', willChange: 'transform', contain: 'paint', isolation: 'isolate' }}>
+                      <div className="group bg-bgc-layer1 relative flex flex-col overflow-hidden rounded-xl border border-bd-default transition-colors transform transition-transform duration-200 ease-out will-change-transform vh-hover-scale-105" data-variant="default">
+                        <div className="relative aspect-[3/4] w-full shrink-0 overflow-hidden bg-black" style={{ aspectRatio: '3 / 4' }}>
+                          <img
+                            sizes="360px"
+                            alt={hc.title}
+                            width="360"
+                            height="480"
+                            loading="eager"
+                            decoding="async"
+                            draggable="false"
+                            className="absolute inset-0 block h-full w-full object-cover object-top select-none pointer-events-none"
+                            src={resolveAssetUrl(hc.cover_url)}
+                          />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] h-px bg-lav-500/30"></div>
+                          <div className="absolute inset-x-0 bottom-0 z-[2] flex min-w-0 items-center gap-2 px-2 pb-2 text-xs text-white/90 max-[415px]:text-xs max-[415px]:leading-[15px] max-[376px]:text-xs max-[376px]:leading-[14px]">
+                            <span className="text-white/90 font-semibold truncate flex-1 min-w-0 basis-auto text-outline text-[17px] leading-[21px] sm:text-base sm:leading-[20px] max-[415px]:text-[14px] max-[415px]:leading-[18px] max-[376px]:text-[13px] max-[376px]:leading-[17px]" title={hc.latest_chapter !== null ? `Chap ${hc.latest_chapter}` : 'Chap 1'}>
+                              {hc.latest_chapter !== null ? `Chap ${hc.latest_chapter}` : 'Chap 1'}
+                            </span>
+                            {hc.status === 'completed' ? (
+                              <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full border px-2 font-semibold max-[415px]:h-[22px] max-[415px]:px-[7px] max-[376px]:h-5 max-[376px]:px-[6px] bg-[#2A1216] text-[#EB6B6B] border-error-error/45" title="Đã END">
+                                END
+                              </span>
+                            ) : hc.status === 'oneshot' ? (
+                              <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full border px-2 font-semibold max-[415px]:h-[22px] max-[415px]:px-[7px] max-[376px]:h-5 max-[376px]:px-[6px] bg-[#261343] text-[#DFA8FF] border-lav-500/45" title="Oneshot">
+                                Oneshot
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="relative z-[2] flex shrink-0 items-start justify-center px-2 pt-2 h-[calc(var(--t-lh)*2+16px)] text-[17px] [--t-lh:21px] sm:text-base sm:[--t-lh:20px] max-[415px]:text-[17px] max-[415px]:[--t-lh:19px] max-[376px]:text-[15px] max-[376px]:[--t-lh:19px]">
+                          <div className="line-clamp-2 min-w-0 max-w-full break-words text-center font-semibold leading-[var(--t-lh)] text-white" title={hc.title}>
+                            {hc.title}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </article>
               ))}

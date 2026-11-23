@@ -106,6 +106,25 @@ a {
   background-size: 1000px 100%;
 }
 
+.text-outline {
+  text-shadow: 0 0 1px #000000f2, 0 0 2px #000000d9, 0 1px 3px #0009;
+}
+.text-outline-purple {
+  -webkit-text-stroke: 1px #d373ff;
+  paint-order: stroke fill;
+}
+.text-outline-purple-thin {
+  -webkit-text-stroke: 0.75px #d373ff;
+  paint-order: stroke fill;
+}
+@media (hover: hover) and (pointer: fine) {
+  .vh-hover-scale-105:hover,
+  .vh-hover-scale-105:focus,
+  .vh-hover-scale-105:focus-visible {
+    transform: scale(1.05);
+  }
+}
+
 .eye-care-overlay {
   position: fixed;
   inset: 0;
