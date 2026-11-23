@@ -126,6 +126,23 @@ CREATE TABLE IF NOT EXISTS site_settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT DEFAULT '',
+    detail TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS daily_metrics (
+    metric_date TEXT PRIMARY KEY,
+    views_count INTEGER NOT NULL DEFAULT 0,
+    new_chapters INTEGER NOT NULL DEFAULT 0,
+    new_comments INTEGER NOT NULL DEFAULT 0,
+    new_users INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_comics_updated ON comics(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comics_author ON comics(author_id);
 CREATE INDEX IF NOT EXISTS idx_comics_top_day ON comics(views_day DESC);
@@ -148,10 +165,15 @@ INSERT OR IGNORE INTO genres (slug, name) VALUES
 ('one-shot', 'One Shot');
 
 INSERT OR IGNORE INTO site_settings (key, value) VALUES
-('site_name', 'VinaReader'),
+('site_name', 'VinaHentai'),
 ('announcement_enabled', '0'),
 ('announcement_text', ''),
-('maintenance_mode', '0');
+('maintenance_mode', '0'),
+('banned_keywords', ''),
+('tg_channel_id', ''),
+('social_telegram', ''),
+('social_discord', ''),
+('seo_description', '');
 
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,6 +182,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     avatar_seed TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user',
+    is_banned INTEGER NOT NULL DEFAULT 0,
+    ban_reason TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -190,26 +214,3 @@ CREATE TABLE IF NOT EXISTS comment_likes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(comic_id, chapter_id, parent_id, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS user_bookmarks (
-    user_id INTEGER NOT NULL,
-    comic_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, comic_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS user_history (
-    user_id INTEGER NOT NULL,
-    comic_id INTEGER NOT NULL,
-    chapter_id INTEGER NOT NULL,
-    chapter_number REAL NOT NULL,
-    progress INTEGER DEFAULT 0,
-    total_pages INTEGER DEFAULT 0,
-    read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, comic_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE,
-    FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
-);

@@ -87,7 +87,7 @@ authRoutes.post('/login', async (c) => {
     await ensureSchemaMigrated(db);
 
     const userRes = await db.execute({
-      sql: 'SELECT id, username, display_name, password_hash, avatar_seed, role FROM users WHERE username = ? LIMIT 1',
+      sql: 'SELECT id, username, display_name, password_hash, avatar_seed, role, is_banned, ban_reason FROM users WHERE username = ? LIMIT 1',
       args: [username],
     });
     if (userRes.rows.length === 0) {
@@ -95,6 +95,9 @@ authRoutes.post('/login', async (c) => {
     }
 
     const u = userRes.rows[0];
+    if (Number(u.is_banned) === 1) {
+      return c.json({ success: false, message: `Tài khoản của bạn đã bị khóa. Lý do: ${String(u.ban_reason || 'Vi phạm nội quy')}` }, 403);
+    }
     const valid = await verifyPassword(password, String(u.password_hash));
     if (!valid) {
       return c.json({ success: false, message: 'Tên đăng nhập hoặc mật khẩu không chính xác.' }, 401);

@@ -246,6 +246,15 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
 commentsRoutes.post('/', requireUserAuth, async (c) => {
   try {
     const authUser = c.get('user');
+    const dbForCheck = getDb(c.env);
+    await ensureSchemaMigrated(dbForCheck);
+    const userCheck = await dbForCheck.execute({
+      sql: 'SELECT is_banned, ban_reason FROM users WHERE id = ? LIMIT 1',
+      args: [authUser.id],
+    });
+    if (userCheck.rows.length > 0 && Number(userCheck.rows[0].is_banned) === 1) {
+      return c.json({ success: false, message: `Tài khoản của bạn đã bị khóa: ${String(userCheck.rows[0].ban_reason || 'Vi phạm nội quy')}` }, 403);
+    }
     const body = (await c.req.json().catch(() => ({}))) as {
       comic_id?: number;
       comic_slug?: string;
@@ -265,6 +274,21 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
 
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
+
+    const settingsRes = await db.execute({
+      sql: "SELECT value FROM site_settings WHERE key = 'banned_keywords' LIMIT 1",
+      args: [],
+    });
+    const bannedKwStr = settingsRes.rows[0]?.value ? String(settingsRes.rows[0].value) : '';
+    if (bannedKwStr) {
+      const keywords = bannedKwStr.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean);
+      const contentLower = content.toLowerCase();
+      for (const kw of keywords) {
+        if (contentLower.includes(kw)) {
+          return c.json({ success: false, message: `Bình luận chứa từ khóa bị cấm: "${kw}"` }, 400);
+        }
+      }
+    }
 
     if ((!Number.isFinite(comicId) || comicId <= 0) && chapterId !== null && Number.isFinite(chapterId)) {
       const chRes = await db.execute({
