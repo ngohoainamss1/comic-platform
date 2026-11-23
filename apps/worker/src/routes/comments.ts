@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb } from '../db/client';
 import { ensureSchemaMigrated } from '../db/migrate';
-import { hashPassword, verifyPassword, signUserToken, toUtcIso } from '../utils/crypto';
+import { hashPassword, verifyPassword, signUserToken, signImageUrl, toUtcIso } from '../utils/crypto';
 import { requireUserAuth, optionalUserAuth } from '../middleware/userAuth';
 
 export const commentsRoutes = new Hono<{
@@ -39,15 +39,19 @@ commentsRoutes.get('/recent', async (c) => {
           cm.meme_url,
           cm.created_at,
           cm.parent_id,
+          cm.reply_to_name AS stored_reply_to_name,
           u.id AS user_id,
           u.username,
           u.display_name,
           u.avatar_seed,
+          u.role AS user_role,
           co.id AS comic_id,
           co.slug AS comic_slug,
           co.title AS comic_title,
-          co.cover_url AS comic_cover_url,
+          co.cover_file_id,
+          co.cover_gh_path,
           ch.chapter_number,
+          pcm.content AS parent_content,
           pu.display_name AS reply_to_name,
           pu.username AS reply_to_username
         FROM comments cm
@@ -56,14 +60,44 @@ commentsRoutes.get('/recent', async (c) => {
         LEFT JOIN chapters ch ON cm.chapter_id = ch.id
         LEFT JOIN comments pcm ON cm.parent_id = pcm.id
         LEFT JOIN users pu ON pcm.user_id = pu.id
-        WHERE cm.is_deleted = 0
+        WHERE cm.is_deleted = 0 AND co.id IS NOT NULL
         ORDER BY cm.created_at DESC
         LIMIT ?
       `,
       args: [limit],
     });
 
-    return c.json({ success: true, comments: rs.rows });
+    const ttl = 86400;
+    const comments = await Promise.all(
+      rs.rows.map(async (row) => {
+        const cf = String(row.cover_file_id || '');
+        const cg = String(row.cover_gh_path || '');
+        const coverUrl = cf ? await signImageUrl(cf, c.env.HMAC_SECRET_KEY, ttl, cg) : '';
+
+        return {
+          id: Number(row.id),
+          content: String(row.content || ''),
+          meme_url: row.meme_url ? String(row.meme_url) : null,
+          created_at: String(row.created_at || ''),
+          parent_id: row.parent_id !== null ? Number(row.parent_id) : null,
+          user_id: row.user_id !== null ? Number(row.user_id) : null,
+          username: row.username ? String(row.username) : null,
+          display_name: row.display_name ? String(row.display_name) : null,
+          avatar_seed: row.avatar_seed ? String(row.avatar_seed) : null,
+          user_role: row.user_role ? String(row.user_role) : 'user',
+          comic_id: Number(row.comic_id),
+          comic_slug: String(row.comic_slug || ''),
+          comic_title: String(row.comic_title || ''),
+          comic_cover_url: coverUrl,
+          chapter_number: row.chapter_number !== null ? Number(row.chapter_number) : null,
+          reply_to_name: (row.stored_reply_to_name || row.reply_to_name || null) as string | null,
+          reply_to_username: row.reply_to_username ? String(row.reply_to_username) : null,
+          parent_content: row.parent_content ? String(row.parent_content) : null,
+        };
+      })
+    );
+
+    return c.json({ success: true, comments });
   } catch (err: any) {
     return c.json({ success: false, comments: [], message: err?.message || 'Lỗi server' }, 500);
   }

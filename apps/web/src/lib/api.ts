@@ -734,6 +734,7 @@ export interface RecentCommentItem {
   display_name?: string | null;
   avatar_url?: string | null;
   avatar_seed?: string | null;
+  user_role?: string | null;
   comic_id: number;
   comic_slug: string;
   comic_title: string;
@@ -741,6 +742,7 @@ export interface RecentCommentItem {
   chapter_number?: number | null;
   reply_to_name?: string | null;
   reply_to_username?: string | null;
+  parent_content?: string | null;
 }
 
 export async function fetchRecentComments(limit = 20): Promise<RecentCommentItem[]> {
