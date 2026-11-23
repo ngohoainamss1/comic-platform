@@ -69,19 +69,29 @@ commentsRoutes.get('/recent', async (c) => {
 
 commentsRoutes.get('/', optionalUserAuth, async (c) => {
   try {
-    const comicId = Number(c.req.query('comic_id'));
+    let comicId = Number(c.req.query('comic_id'));
     const chapterIdQuery = c.req.query('chapter_id');
     const chapterId = chapterIdQuery !== undefined && chapterIdQuery !== '' ? Number(chapterIdQuery) : null;
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10) || 20));
     const offset = (page - 1) * limit;
 
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    if ((!Number.isFinite(comicId) || comicId <= 0) && chapterId !== null && Number.isFinite(chapterId)) {
+      const chRes = await db.execute({
+        sql: `SELECT comic_id FROM chapters WHERE id = ?`,
+        args: [chapterId],
+      });
+      if (chRes.rows.length > 0 && chRes.rows[0].comic_id) {
+        comicId = Number(chRes.rows[0].comic_id);
+      }
+    }
+
     if (!Number.isFinite(comicId) || comicId <= 0) {
       return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
     }
-
-    const db = getDb(c.env);
-    await ensureSchemaMigrated(db);
 
     const currentUser = c.get('user');
     const currentUserId = currentUser ? currentUser.id : 0;
