@@ -90,7 +90,8 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
     }
 
     if (!Number.isFinite(comicId) || comicId <= 0) {
-      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
+      const firstComic = await db.execute(`SELECT id FROM comics ORDER BY id ASC LIMIT 1`);
+      comicId = firstComic.rows.length > 0 ? Number(firstComic.rows[0].id) : 1;
     }
 
     const currentUser = c.get('user');
@@ -228,7 +229,8 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
     }
 
     if (!Number.isFinite(comicId) || comicId <= 0) {
-      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
+      const firstComic = await db.execute(`SELECT id FROM comics ORDER BY id ASC LIMIT 1`);
+      comicId = firstComic.rows.length > 0 ? Number(firstComic.rows[0].id) : 1;
     }
     if (!content && !memeUrl) {
       return c.json({ success: false, message: 'Bình luận không được để trống nội dung hoặc meme.' }, 400);
