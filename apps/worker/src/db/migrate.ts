@@ -6,15 +6,22 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
   if (migrated) return;
   try {
     await db.execute(
-      `CREATE TABLE IF NOT EXISTS chapter_reports (
+      `CREATE TABLE IF NOT EXISTS admin_audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        comic_id INTEGER NOT NULL,
-        chapter_id INTEGER DEFAULT NULL,
-        reason TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT DEFAULT '',
         detail TEXT DEFAULT '',
-        status TEXT DEFAULT 'open',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    );
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS daily_metrics (
+        metric_date TEXT PRIMARY KEY,
+        views_count INTEGER NOT NULL DEFAULT 0,
+        new_chapters INTEGER NOT NULL DEFAULT 0,
+        new_comments INTEGER NOT NULL DEFAULT 0,
+        new_users INTEGER NOT NULL DEFAULT 0
       )`
     );
     await db.execute(
@@ -107,11 +114,18 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
     try { await db.execute('ALTER TABLE comics ADD COLUMN likes_count INTEGER DEFAULT 0'); } catch {}
     try { await db.execute('ALTER TABLE genres ADD COLUMN description TEXT DEFAULT ""'); } catch {}
     try { await db.execute('ALTER TABLE genres ADD COLUMN comic_count INTEGER DEFAULT 0'); } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0'); } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN ban_reason TEXT DEFAULT ""'); } catch {}
 
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_name', 'VinaHentai')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_enabled', '0')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('announcement_text', '')");
     await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('maintenance_mode', '0')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('banned_keywords', '')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('tg_channel_id', '')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('social_telegram', '')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('social_discord', '')");
+    await db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('seo_description', '')");
 
         // Seed all VinaHentai genres with exact descriptions and comic counts
     await db.execute(`INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES ($"3d-hentai", $"3D Hentai", $"Truy\u1ec7n tranh ho\u1eb7c video hentai s\u1eed d\u1ee5ng \u0111\u1ed3 h\u1ecda 3D.", $413)`);

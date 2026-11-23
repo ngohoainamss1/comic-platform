@@ -5,6 +5,7 @@ export interface Env {
   TURSO_AUTH_TOKEN: string;
   HMAC_SECRET_KEY: string;
   TG_BOT_TOKEN: string;
+  TG_CHANNEL_ID?: string;
   GH_TOKEN: string;
   GH_BACKUP_REPO: string;
   ADMIN_PASSWORD?: string;

@@ -125,8 +125,9 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
       }
     }
 
-    if ((!Number.isFinite(comicId) || comicId <= 0) && body.comic_slug) {
-      const slug = String(body.comic_slug).trim();
+    const comicSlug = c.req.query('comic_slug') ? String(c.req.query('comic_slug')).trim() : null;
+    if ((!Number.isFinite(comicId) || comicId <= 0) && comicSlug) {
+      const slug = String(comicSlug).trim();
       const cmRes = await db.execute({
         sql: `SELECT id FROM comics WHERE slug = ? LIMIT 1`,
         args: [slug],
@@ -247,6 +248,7 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
     const authUser = c.get('user');
     const body = (await c.req.json().catch(() => ({}))) as {
       comic_id?: number;
+      comic_slug?: string;
       chapter_id?: number | null;
       parent_id?: number | null;
       reply_to_name?: string | null;
@@ -274,8 +276,9 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       }
     }
 
-    if ((!Number.isFinite(comicId) || comicId <= 0) && body.comic_slug) {
-      const slug = String(body.comic_slug).trim();
+    const comicSlug = body.comic_slug ? String(body.comic_slug).trim() : (c.req.query('comic_slug') ? String(c.req.query('comic_slug')).trim() : null);
+    if ((!Number.isFinite(comicId) || comicId <= 0) && comicSlug) {
+      const slug = String(comicSlug).trim();
       const cmRes = await db.execute({
         sql: `SELECT id FROM comics WHERE slug = ? LIMIT 1`,
         args: [slug],
