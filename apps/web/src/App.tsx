@@ -244,7 +244,13 @@ export function App() {
           setReaderData(payload);
           setView('reader');
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.error(err);
+          if (confirm('Không thể tải chương truyện. Xóa bộ nhớ đệm và tải lại trang để khắc phục lỗi trên điện thoại?')) {
+            localStorage.clear();
+            window.location.href = '/';
+          }
+        });
     }
   }, [initRoute]);
 
@@ -2161,6 +2167,17 @@ export function App() {
             </div>
 
             <div className="border-t border-bd-default pt-4 space-y-2">
+              <button
+                onClick={() => {
+                  if (confirm('Xóa bộ nhớ đệm và làm mới trang để khắc phục lỗi không đọc được trên điện thoại?')) {
+                    localStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-xs font-semibold text-rose-300 flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" /> Sửa lỗi đọc trên điện thoại
+              </button>
               <button
                 onClick={() => navigateTo({ view: 'admin' })}
                 className="w-full px-3 py-2 rounded-lg bg-bgc-layer2 hover:border-lav-500 border border-bd-default text-xs font-semibold text-txt-secondary hover:text-txt-primary flex items-center gap-2"
