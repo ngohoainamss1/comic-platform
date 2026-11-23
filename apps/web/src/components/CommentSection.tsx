@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   MessageSquare,
-  ThumbsUp,
+  Heart,
   Smile,
   Send,
   Trash2,
@@ -73,6 +73,31 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const numComicId = Number(resolvedComicId);
   const isValidComic = Number.isFinite(numComicId) && numComicId > 0;
 
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState('');
+  const [selectedMeme, setSelectedMeme] = useState<string | null>(null);
+
+  // Trạng thái trả lời (Reply)
+  const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
+  const [replyingToName, setReplyingToName] = useState<string | null>(null);
+  const [replyContent, setReplyContent] = useState('');
+  const [replyMeme, setReplyMeme] = useState<string | null>(null);
+
+  // Picker popup
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState<'emoji' | 'sticker' | 'gif'>('emoji');
+  const [stickerCategory, setStickerCategory] = useState<'hai' | 'soc' | 'yeu' | 'cay'>('hai');
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState<GifItem[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [activePickerTarget, setActivePickerTarget] = useState<'main' | 'reply'>('main');
+
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  const numComicId = Number(resolvedComicId);
+  const isValidComic = Number.isFinite(numComicId) && numComicId > 0;
+
   const loadComments = async () => {
     if (!isValidComic) {
       setLoading(false);
@@ -122,6 +147,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       return;
     }
     if (!isValidComic) {
+      alert('Mã truyện không hợp lệ.');
       return;
     }
     if (!content.trim() && !selectedMeme) return;
@@ -148,6 +174,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       return;
     }
     if (!isValidComic) {
+      alert('Mã truyện không hợp lệ.');
       return;
     }
     if (!replyContent.trim() && !replyMeme) return;
@@ -206,33 +233,20 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const formatTime = (iso: string) => {
-    if (!iso) return '';
-    const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T');
-    const full = normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z';
-    const t = new Date(full).getTime();
+    const t = new Date(iso).getTime();
     if (!Number.isFinite(t)) return '';
     const diff = Math.max(0, Math.floor((Date.now() - t) / 1000));
     if (diff < 60) return 'Vừa xong';
-    if (diff < 3600) return `${Math.floor(diff / 60)}p trước`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h trước`;
-    return `${Math.floor(diff / 86400)}d trước`;
-  };;
-
-  const totalComments = comments.reduce((acc, c) => acc + 1 + c.replies.length, 0);
-
-  if (!isValidComic) {
-    return (
-      <div className="rounded-2xl bg-bgc-layer1 border border-bd-default p-4 text-center text-xs text-txt-secondary">
-        Đang tải khung bình luận...
-      </div>
-    );
-  }
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    return `${Math.floor(diff / 86400)} ngày trước`;
+  };
 
   return (
-    <div className="rounded-2xl bg-bgc-layer1 border border-bd-default p-4 sm:p-6 space-y-6">
-      <div className="flex items-center justify-between border-b border-bd-default pb-3">
-        <h3 className="font-bold text-base sm:text-lg text-txt-primary flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-lav-400" /> Bình luận ({totalComments})
+    <div className="rounded-3xl bg-[#111119] border border-white/10 p-4 sm:p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="font-black text-base sm:text-lg text-white flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-rose-500" /> Bình luận ({comments.reduce((acc, c) => acc + 1 + c.replies.length, 0)})
         </h3>
       </div>
 
@@ -242,18 +256,18 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           <img
             src={getAvatarUrl(currentUser?.avatar_seed, currentUser?.username)}
             alt="Avatar"
-            className="w-10 h-10 rounded-xl bg-bgc-layer2 border border-bd-default p-0.5 shrink-0"
+            className="w-10 h-10 rounded-2xl bg-zinc-900 border border-white/15 p-0.5 shrink-0"
           />
-          <div className="flex-1 rounded-2xl bg-bgc-layer2 border border-bd-strong focus-within:border-lav-500 overflow-hidden transition">
+          <div className="flex-1 rounded-2xl bg-black/50 border border-white/10 focus-within:border-rose-500 overflow-hidden transition">
             <textarea
               rows={3}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder={currentUser ? 'Viết bình luận của bạn...' : 'Vui lòng Đăng nhập để bình luận...'}
+              placeholder={currentUser ? 'Viết bình luận của bạn...' : 'Đăng nhập để tham gia bình luận...'}
               onClick={() => {
                 if (!currentUser) onRequireAuth();
               }}
-              className="w-full bg-transparent p-3 text-xs sm:text-sm text-txt-primary placeholder:text-txt-secondary outline-none resize-none"
+              className="w-full bg-transparent p-3 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none resize-none"
             />
 
             {selectedMeme && (
@@ -262,7 +276,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   <img
                     src={resolveMemeUrl(selectedMeme) || ''}
                     alt="Meme"
-                    className="h-20 w-auto rounded-xl object-contain bg-bgc-layer1 border border-bd-default"
+                    className="h-20 w-auto rounded-xl object-contain bg-zinc-900 border border-white/10"
                   />
                   <button
                     type="button"
@@ -275,7 +289,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-between px-3 py-2 bg-bgc-layer1 border-t border-bd-default">
+            <div className="flex items-center justify-between px-3 py-2 bg-white/[0.02] border-t border-white/5">
               <button
                 type="button"
                 onClick={() => {
@@ -286,7 +300,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   setActivePickerTarget('main');
                   setPickerOpen((o) => !o);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-bgc-layer2 hover:bg-lav-500/20 text-xs font-semibold text-txt-primary flex items-center gap-1.5 transition"
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300 flex items-center gap-1.5 transition"
               >
                 <Smile className="w-4 h-4 text-amber-400" /> Meme / Emoji
               </button>
@@ -294,7 +308,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               <button
                 type="submit"
                 disabled={(!content.trim() && !selectedMeme) || !currentUser}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-lav-500 to-mag-500 hover:brightness-110 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1.5 shadow-md shadow-lav-500/25 transition"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:brightness-110 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1.5 shadow-md shadow-rose-500/20 transition"
               >
                 <Send className="w-3.5 h-3.5" /> Gửi
               </button>
@@ -302,19 +316,19 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           </div>
         </div>
 
-        {/* Picker Popover */}
+        {/* Picker Popover / Bottom Sheet */}
         {pickerOpen && (
           <div
             ref={pickerRef}
-            className="absolute z-50 left-0 sm:left-12 top-full mt-2 w-full sm:w-80 rounded-2xl bg-bgc-layer1 border border-bd-strong p-4 shadow-2xl space-y-3"
+            className="absolute z-50 left-0 sm:left-12 top-full mt-2 w-full sm:w-80 rounded-3xl bg-[#181822] border border-white/15 p-4 shadow-2xl space-y-3"
           >
-            <div className="flex items-center justify-between border-b border-bd-default pb-2">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setPickerTab('emoji')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                    pickerTab === 'emoji' ? 'bg-lav-500 text-white' : 'text-txt-secondary hover:text-white'
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
+                    pickerTab === 'emoji' ? 'bg-rose-500 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
                   Emoji
@@ -322,8 +336,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setPickerTab('sticker')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                    pickerTab === 'sticker' ? 'bg-lav-500 text-white' : 'text-txt-secondary hover:text-white'
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
+                    pickerTab === 'sticker' ? 'bg-rose-500 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
                   Sticker
@@ -332,15 +346,15 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => setPickerTab('gif')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      pickerTab === 'gif' ? 'bg-lav-500 text-white' : 'text-txt-secondary hover:text-white'
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
+                      pickerTab === 'gif' ? 'bg-rose-500 text-white' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
                     GIF
                   </button>
                 )}
               </div>
-              <button type="button" onClick={() => setPickerOpen(false)} className="text-txt-secondary hover:text-white p-1">
+              <button type="button" onClick={() => setPickerOpen(false)} className="text-zinc-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -371,8 +385,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                       key={cat.id}
                       type="button"
                       onClick={() => setStickerCategory(cat.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 ${
-                        stickerCategory === cat.id ? 'bg-lav-500 text-white' : 'bg-bgc-layer2 text-txt-secondary'
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 ${
+                        stickerCategory === cat.id ? 'bg-white/20 text-white' : 'bg-white/5 text-zinc-400'
                       }`}
                     >
                       {cat.label}
@@ -391,7 +405,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                         setPickerOpen(false);
                       }}
                       title={st.label}
-                      className="p-2 rounded-xl bg-bgc-layer2 hover:bg-lav-500/20 border border-bd-default hover:border-lav-500 flex items-center justify-center transition group"
+                      className="p-2 rounded-2xl bg-black/40 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/40 flex items-center justify-center transition group"
                     >
                       <img src={st.url} alt={st.label} className="w-12 h-12 object-contain group-hover:scale-110 transition" />
                     </button>
@@ -403,17 +417,17 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             {pickerTab === 'gif' && HAS_GIF_SEARCH && (
               <div className="space-y-2.5">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-txt-secondary absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={gifQuery}
                     onChange={(e) => setGifQuery(e.target.value)}
                     placeholder="Tìm GIF động..."
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-bgc-layer2 border border-bd-default text-xs text-txt-primary outline-none"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-black/50 border border-white/15 text-xs text-white outline-none"
                   />
                 </div>
                 {gifLoading ? (
-                  <p className="text-xs text-txt-secondary text-center py-6">Đang tìm GIF...</p>
+                  <p className="text-xs text-zinc-500 text-center py-6">Đang tìm GIF...</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                     {gifResults.map((gif) => (
@@ -425,7 +439,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                           else setReplyMeme(gif.url);
                           setPickerOpen(false);
                         }}
-                        className="rounded-xl overflow-hidden aspect-video bg-bgc-layer2 border border-bd-default hover:border-lav-500 transition"
+                        className="rounded-xl overflow-hidden aspect-video bg-black/40 border border-white/5 hover:border-rose-500 transition"
                       >
                         <img src={gif.previewUrl} alt={gif.title} className="w-full h-full object-cover" />
                       </button>
@@ -441,9 +455,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       {/* Danh sách bình luận */}
       <div className="divide-y divide-white/5 space-y-4 pt-2">
         {loading ? (
-          <p className="text-xs text-txt-secondary text-center py-8">Đang tải bình luận...</p>
+          <p className="text-xs text-zinc-500 text-center py-8">Đang tải bình luận...</p>
         ) : comments.length === 0 ? (
-          <p className="text-xs text-txt-secondary text-center py-8">Chưa có bình luận nào. Hãy là người đầu tiên bình luận!</p>
+          <p className="text-xs text-zinc-500 text-center py-8">Chưa có bình luận nào. Hãy là người đầu tiên bình luận!</p>
         ) : (
           comments.map((comment) => {
             const avatarUrl = getAvatarUrl(comment.user.avatar_seed, comment.user.username);
@@ -458,12 +472,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   <img
                     src={avatarUrl}
                     alt={comment.user.display_name}
-                    className="w-9 h-9 rounded-xl bg-bgc-layer2 border border-bd-default p-0.5 shrink-0"
+                    className="w-9 h-9 rounded-2xl bg-zinc-900 border border-white/10 p-0.5 shrink-0"
                   />
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-txt-primary flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
                           {comment.user.display_name}
                           {isAdmin && (
                             <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 text-[9px] font-black border border-rose-500/30">
@@ -471,28 +485,21 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                             </span>
                           )}
                         </span>
-
-                        {comment.chapter_number !== null && comment.chapter_number !== undefined && (
-                          <span className="px-2 py-0.5 rounded bg-lav-500/20 text-lav-300 text-[10px] font-bold border border-lav-500/30">
-                            Chương {comment.chapter_number}
-                          </span>
-                        )}
-
-                        <span className="text-[10px] text-txt-secondary">{formatTime(comment.created_at)}</span>
+                        <span className="text-[10px] text-zinc-500">{formatTime(comment.created_at)}</span>
                       </div>
 
                       {canDelete && (
                         <button
                           onClick={() => handleDelete(comment.id)}
                           title="Xóa bình luận"
-                          className="text-txt-secondary hover:text-rose-400 p-1 transition"
+                          className="text-zinc-500 hover:text-rose-400 p-1 transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
 
-                    {comment.content && <p className="text-xs sm:text-sm text-txt-secondary leading-relaxed whitespace-pre-line">{comment.content}</p>}
+                    {comment.content && <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed whitespace-pre-line">{comment.content}</p>}
 
                     {memeImage && (
                       <div className="pt-1">
@@ -500,7 +507,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                           src={memeImage}
                           alt="Sticker/Meme"
                           loading="lazy"
-                          className="max-h-40 w-auto rounded-xl object-contain bg-bgc-layer2/60 border border-bd-default shadow-md"
+                          className="max-h-40 w-auto rounded-2xl object-contain bg-zinc-900/60 border border-white/10 shadow-md"
                         />
                       </div>
                     )}
@@ -509,10 +516,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                       <button
                         onClick={() => handleLike(comment.id)}
                         className={`flex items-center gap-1.5 font-bold transition ${
-                          comment.liked_by_me ? 'text-lav-400' : 'text-txt-secondary hover:text-lav-400'
+                          comment.liked_by_me ? 'text-rose-500' : 'text-zinc-400 hover:text-rose-400'
                         }`}
                       >
-                        <ThumbsUp className={`w-3.5 h-3.5 ${comment.liked_by_me ? 'fill-lav-400 text-lav-400' : ''}`} />
+                        <Heart className={`w-3.5 h-3.5 ${comment.liked_by_me ? 'fill-rose-500' : ''}`} />
                         <span>{comment.likes_count > 0 ? comment.likes_count : 'Thích'}</span>
                       </button>
                       <button
@@ -525,34 +532,34 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                           setReplyingToName(comment.user.display_name);
                           setReplyContent(`@${comment.user.display_name} `);
                         }}
-                        className="font-bold text-txt-secondary hover:text-white transition flex items-center gap-1"
+                        className="font-bold text-zinc-400 hover:text-white transition flex items-center gap-1"
                       >
                         <CornerDownRight className="w-3.5 h-3.5" /> Trả lời
                       </button>
                     </div>
 
-                    {/* Khung nhập Reply */}
+                    {/* Khung nhập Reply (nếu đang mở) */}
                     {replyingToCommentId === comment.id && (
-                      <div className="pt-3 pl-4 sm:pl-6 border-l-2 border-lav-500/40 space-y-2.5">
-                        <div className="flex items-center justify-between text-xs text-txt-secondary">
-                          <span>Đang trả lời <strong className="text-lav-400">@{replyingToName}</strong></span>
+                      <div className="pt-3 pl-4 sm:pl-6 border-l-2 border-rose-500/40 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs text-zinc-400">
+                          <span>Đang trả lời <strong className="text-rose-400">@{replyingToName}</strong></span>
                           <button
                             onClick={() => {
                               setReplyingToCommentId(null);
                               setReplyingToName(null);
                             }}
-                            className="text-txt-secondary hover:text-white"
+                            className="text-zinc-500 hover:text-white"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="rounded-2xl bg-bgc-layer2 border border-bd-strong overflow-hidden">
+                        <div className="rounded-2xl bg-black/50 border border-white/10 overflow-hidden">
                           <textarea
                             rows={2}
                             value={replyContent}
                             onChange={(e) => setReplyContent(e.target.value)}
                             placeholder="Viết phản hồi..."
-                            className="w-full bg-transparent p-2.5 text-xs text-txt-primary placeholder:text-txt-secondary outline-none resize-none"
+                            className="w-full bg-transparent p-2.5 text-xs text-white placeholder:text-zinc-500 outline-none resize-none"
                           />
                           {replyMeme && (
                             <div className="px-2.5 pb-2">
@@ -560,7 +567,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                                 <img
                                   src={resolveMemeUrl(replyMeme) || ''}
                                   alt="Meme"
-                                  className="h-16 w-auto rounded-xl object-contain bg-bgc-layer1 border border-bd-default"
+                                  className="h-16 w-auto rounded-xl object-contain bg-zinc-900 border border-white/10"
                                 />
                                 <button
                                   type="button"
@@ -572,14 +579,14 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                               </div>
                             </div>
                           )}
-                          <div className="flex items-center justify-between px-2.5 py-1.5 bg-bgc-layer1 border-t border-bd-default">
+                          <div className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.02] border-t border-white/5">
                             <button
                               type="button"
                               onClick={() => {
                                 setActivePickerTarget('reply');
                                 setPickerOpen((o) => !o);
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-bgc-layer2 hover:bg-lav-500/20 text-[11px] font-bold text-txt-primary flex items-center gap-1"
+                              className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-zinc-300 flex items-center gap-1"
                             >
                               <Smile className="w-3.5 h-3.5 text-amber-400" /> Meme
                             </button>
@@ -587,7 +594,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                               type="button"
                               onClick={() => handlePostReply(comment.id)}
                               disabled={!replyContent.trim() && !replyMeme}
-                              className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-lav-500 to-mag-500 hover:brightness-110 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1 shadow"
+                              className="px-3 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1"
                             >
                               <Send className="w-3 h-3" /> Gửi
                             </button>
@@ -598,7 +605,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
                     {/* Danh sách Replies */}
                     {comment.replies && comment.replies.length > 0 && (
-                      <div className="pt-3 pl-4 sm:pl-8 space-y-3 border-l border-bd-default">
+                      <div className="pt-3 pl-4 sm:pl-8 space-y-3 border-l border-white/10">
                         {comment.replies.map((reply) => {
                           const rAvatar = getAvatarUrl(reply.user.avatar_seed, reply.user.username);
                           const rMeme = resolveMemeUrl(reply.meme_url);
@@ -610,12 +617,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                               <img
                                 src={rAvatar}
                                 alt={reply.user.display_name}
-                                className="w-7 h-7 rounded-xl bg-bgc-layer2 border border-bd-default p-0.5 shrink-0"
+                                className="w-7 h-7 rounded-xl bg-zinc-900 border border-white/10 p-0.5 shrink-0"
                               />
                               <div className="flex-1 min-w-0 space-y-1">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-[11px] font-bold text-txt-primary flex items-center gap-1">
+                                    <span className="text-[11px] font-bold text-white flex items-center gap-1">
                                       {reply.user.display_name}
                                       {rIsAdmin && (
                                         <span className="px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 text-[8px] font-black border border-rose-500/30">
@@ -623,27 +630,20 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                                         </span>
                                       )}
                                     </span>
-
-                                    {reply.chapter_number !== null && reply.chapter_number !== undefined && (
-                                      <span className="px-1.5 py-0.2 rounded bg-lav-500/20 text-lav-300 text-[9px] font-bold border border-lav-500/30">
-                                        Chương {reply.chapter_number}
-                                      </span>
-                                    )}
-
-                                    <span className="text-[10px] text-txt-secondary">{formatTime(reply.created_at)}</span>
+                                    <span className="text-[10px] text-zinc-500">{formatTime(reply.created_at)}</span>
                                   </div>
 
                                   {rCanDelete && (
                                     <button
                                       onClick={() => handleDelete(reply.id)}
-                                      className="text-txt-secondary hover:text-rose-400 p-0.5"
+                                      className="text-zinc-500 hover:text-rose-400 p-0.5"
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   )}
                                 </div>
 
-                                {reply.content && <p className="text-xs text-txt-secondary leading-relaxed whitespace-pre-line">{reply.content}</p>}
+                                {reply.content && <p className="text-xs text-zinc-200 leading-relaxed whitespace-pre-line">{reply.content}</p>}
 
                                 {rMeme && (
                                   <div className="pt-0.5">
@@ -651,7 +651,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                                       src={rMeme}
                                       alt="Sticker/Meme"
                                       loading="lazy"
-                                      className="max-h-32 w-auto rounded-xl object-contain bg-bgc-layer2/60 border border-bd-default"
+                                      className="max-h-32 w-auto rounded-xl object-contain bg-zinc-900/60 border border-white/10"
                                     />
                                   </div>
                                 )}
@@ -660,10 +660,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                                   <button
                                     onClick={() => handleLike(reply.id)}
                                     className={`flex items-center gap-1 font-bold transition ${
-                                      reply.liked_by_me ? 'text-lav-400' : 'text-txt-secondary hover:text-lav-400'
+                                      reply.liked_by_me ? 'text-rose-500' : 'text-zinc-400 hover:text-rose-400'
                                     }`}
                                   >
-                                    <ThumbsUp className={`w-3 h-3 ${reply.liked_by_me ? 'fill-lav-400 text-lav-400' : ''}`} />
+                                    <Heart className={`w-3 h-3 ${reply.liked_by_me ? 'fill-rose-500' : ''}`} />
                                     <span>{reply.likes_count > 0 ? reply.likes_count : 'Thích'}</span>
                                   </button>
                                 </div>
