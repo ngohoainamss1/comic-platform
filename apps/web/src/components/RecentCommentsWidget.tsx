@@ -53,13 +53,22 @@ export const RecentCommentsWidget: React.FC<RecentCommentsWidgetProps> = ({
     };
   }, []);
 
+  const oneHourAgo = Date.now() - 3600 * 1000;
+  const filteredComments = comments.filter((item) => {
+    if (!item.created_at) return false;
+    const normalized = item.created_at.includes('T') ? item.created_at : item.created_at.replace(' ', 'T');
+    const full = normalized.endsWith('Z') || normalized.includes('+') ? normalized : normalized + 'Z';
+    const t = new Date(full).getTime();
+    return Number.isFinite(t) && t >= oneHourAgo;
+  });
+
   return (
     <div className="bg-bgc-layer1 border-bd-default w-full overflow-hidden rounded-2xl border p-0 ml-auto shadow-md">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3.5 border-b border-bd-default bg-bgc-layer2/50">
         <MessageSquare className="h-5 w-5 text-lav-400" aria-hidden="true" />
         <span className="text-txt-primary text-base font-semibold uppercase tracking-wide">
-          Bình Luận
+          Bình Luận (1h qua)
         </span>
       </div>
 
@@ -77,13 +86,13 @@ export const RecentCommentsWidget: React.FC<RecentCommentsWidgetProps> = ({
             </div>
           ))}
         </div>
-      ) : comments.length === 0 ? (
+      ) : filteredComments.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-txt-secondary">
-          Chưa có bình luận nào.
+          Chưa có bình luận nào trong 1 giờ qua.
         </div>
       ) : (
         <ul className="divide-y divide-bd-default flex max-h-[520px] flex-col overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar">
-          {comments.map((item) => {
+          {filteredComments.map((item) => {
             const displayName = item.display_name || item.username || 'Ẩn danh';
             const replyName = item.reply_to_name || item.reply_to_username;
             const avatarSrc = item.avatar_url || getAvatarUrl(item.avatar_seed, displayName);
