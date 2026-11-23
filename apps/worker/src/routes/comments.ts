@@ -197,12 +197,25 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       meme_url?: string | null;
     };
 
-    const comicId = Number(body.comic_id);
+    let comicId = Number(body.comic_id);
     const chapterId = body.chapter_id !== undefined && body.chapter_id !== null ? Number(body.chapter_id) : null;
     let parentId = body.parent_id !== undefined && body.parent_id !== null ? Number(body.parent_id) : null;
     const replyToName = body.reply_to_name ? String(body.reply_to_name).trim().slice(0, 32) : null;
     const content = String(body.content || '').trim().slice(0, 1000);
     const memeUrl = body.meme_url ? String(body.meme_url).trim() : null;
+
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+
+    if ((!Number.isFinite(comicId) || comicId <= 0) && chapterId !== null && Number.isFinite(chapterId)) {
+      const chRes = await db.execute({
+        sql: `SELECT comic_id FROM chapters WHERE id = ?`,
+        args: [chapterId],
+      });
+      if (chRes.rows.length > 0 && chRes.rows[0].comic_id) {
+        comicId = Number(chRes.rows[0].comic_id);
+      }
+    }
 
     if (!Number.isFinite(comicId) || comicId <= 0) {
       return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
@@ -213,9 +226,6 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
     if (!isValidMemeUrl(memeUrl)) {
       return c.json({ success: false, message: 'Đường dẫn meme/sticker không hợp lệ.' }, 400);
     }
-
-    const db = getDb(c.env);
-    await ensureSchemaMigrated(db);
 
     if (parentId !== null && Number.isFinite(parentId)) {
       const parentRes = await db.execute({
