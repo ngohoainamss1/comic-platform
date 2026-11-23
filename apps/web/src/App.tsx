@@ -395,10 +395,17 @@ export function App() {
       navigateTo({ view: 'reader', chapterId }, { replace: options?.replace });
       incrementComicView(payload.chapter.comic_id);
 
-      const coverUrl =
+      let coverUrl =
         selectedComic?.slug === payload.chapter.comic_slug
           ? selectedComic.cover_url
           : historyList.find((h) => h.slug === payload.chapter.comic_slug)?.cover_url || '';
+
+      if (!coverUrl && payload.chapter.comic_slug) {
+        try {
+          const detail = await fetchComicDetail(payload.chapter.comic_slug);
+          coverUrl = detail.cover_url || '';
+        } catch {}
+      }
 
       saveHistory({
         slug: payload.chapter.comic_slug,
@@ -420,19 +427,43 @@ export function App() {
     setReaderData((cur) => {
       if (!cur) return cur;
       const existing = getHistory().find((h) => h.slug === cur.chapter.comic_slug);
+      let coverUrl = existing?.cover_url || '';
+      if (!coverUrl && selectedComic?.slug === cur.chapter.comic_slug) {
+        coverUrl = selectedComic.cover_url;
+      }
+
       saveHistory({
         slug: cur.chapter.comic_slug,
         title: cur.chapter.comic_title,
-        cover_url: existing?.cover_url || '',
+        cover_url: coverUrl,
         chapter_id: cur.chapter.id,
         chapter_number: cur.chapter.chapter_number,
         read_at: Date.now(),
         progress: pageIdx + 1,
         total_pages: total,
       });
+
+      if (!coverUrl && cur.chapter.comic_slug) {
+        fetchComicDetail(cur.chapter.comic_slug).then((detail) => {
+          if (detail.cover_url) {
+            saveHistory({
+              slug: cur.chapter.comic_slug,
+              title: cur.chapter.comic_title,
+              cover_url: detail.cover_url,
+              chapter_id: cur.chapter.id,
+              chapter_number: cur.chapter.chapter_number,
+              read_at: Date.now(),
+              progress: pageIdx + 1,
+              total_pages: total,
+            });
+            setHistoryList(getHistory());
+          }
+        }).catch(() => {});
+      }
+
       return cur;
     });
-  }, []);
+  }, [selectedComic]);
 
   const cycleGenreState = (slug: string) => {
     if (incGenres.includes(slug)) {
