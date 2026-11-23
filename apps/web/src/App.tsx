@@ -2101,6 +2101,7 @@ export function App() {
                   )}
                   <CommentSection
                     comicId={selectedComic.id}
+                    comicSlug={selectedComic.slug}
                     currentUser={currentUser}
                     onRequireAuth={() => setAuthModalOpen(true)}
                   />

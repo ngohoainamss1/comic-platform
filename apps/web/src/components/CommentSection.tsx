@@ -18,6 +18,8 @@ import {
   postComment,
   toggleLikeComment,
   deleteComment,
+  fetchComicDetail,
+  fetchChapterPages,
 } from '../lib/api';
 import {
   STICKER_PRESETS,
@@ -31,7 +33,8 @@ import {
 } from '../lib/memes';
 
 interface CommentSectionProps {
-  comicId: number;
+  comicId?: number | null;
+  comicSlug?: string | null;
   chapterId?: number | null;
   currentUser: UserProfile | null;
   onRequireAuth: () => void;
@@ -39,33 +42,35 @@ interface CommentSectionProps {
 
 export const CommentSection: React.FC<CommentSectionProps> = ({
   comicId,
+  comicSlug,
   chapterId,
   currentUser,
   onRequireAuth,
 }) => {
-  const [comments, setComments] = useState<CommentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState('');
-  const [selectedMeme, setSelectedMeme] = useState<string | null>(null);
+  const [resolvedComicId, setResolvedComicId] = useState<number>(Number(comicId) || 0);
 
-  // Trạng thái trả lời (Reply)
-  const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
-  const [replyingToName, setReplyingToName] = useState<string | null>(null);
-  const [replyContent, setReplyContent] = useState('');
-  const [replyMeme, setReplyMeme] = useState<string | null>(null);
+  useEffect(() => {
+    let id = Number(comicId);
+    if (Number.isFinite(id) && id > 0) {
+      setResolvedComicId(id);
+      return;
+    }
+    if (comicSlug) {
+      fetchComicDetail(comicSlug)
+        .then((detail) => {
+          if (detail?.id) setResolvedComicId(Number(detail.id));
+        })
+        .catch(() => {});
+    } else if (chapterId) {
+      fetchChapterPages(chapterId)
+        .then((payload) => {
+          if (payload?.chapter?.comic_id) setResolvedComicId(Number(payload.chapter.comic_id));
+        })
+        .catch(() => {});
+    }
+  }, [comicId, comicSlug, chapterId]);
 
-  // Picker popup
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerTab, setPickerTab] = useState<'emoji' | 'sticker' | 'gif'>('emoji');
-  const [stickerCategory, setStickerCategory] = useState<'hai' | 'soc' | 'yeu' | 'cay'>('hai');
-  const [gifQuery, setGifQuery] = useState('');
-  const [gifResults, setGifResults] = useState<GifItem[]>([]);
-  const [gifLoading, setGifLoading] = useState(false);
-  const [activePickerTarget, setActivePickerTarget] = useState<'main' | 'reply'>('main');
-
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-
-  const numComicId = Number(comicId);
+  const numComicId = Number(resolvedComicId);
   const isValidComic = Number.isFinite(numComicId) && numComicId > 0;
 
   const loadComments = async () => {

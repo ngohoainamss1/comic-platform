@@ -468,6 +468,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             <div className="w-full max-w-3xl px-4 pt-4 pb-12">
               <CommentSection
                 comicId={data.chapter.comic_id}
+                comicSlug={data.chapter.comic_slug}
                 chapterId={data.chapter.id}
                 currentUser={currentUser}
                 onRequireAuth={onRequireAuth}
@@ -510,6 +511,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             <div className="w-full max-w-3xl px-4 pt-8 pb-12">
               <CommentSection
                 comicId={data.chapter.comic_id}
+                comicSlug={data.chapter.comic_slug}
                 chapterId={data.chapter.id}
                 currentUser={currentUser}
                 onRequireAuth={onRequireAuth}
