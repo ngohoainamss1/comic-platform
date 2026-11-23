@@ -68,8 +68,8 @@ authRoutes.post('/register', async (c) => {
         role: String(u.role),
       },
     });
-  } catch (err) {
-    return c.json({ success: false, message: 'Lỗi đăng ký tài khoản.' }, 500);
+  } catch (err: any) {
+    return c.json({ success: false, message: err?.message || 'Lỗi đăng ký tài khoản.' }, 500);
   }
 });
 
@@ -117,8 +117,8 @@ authRoutes.post('/login', async (c) => {
         role: String(u.role),
       },
     });
-  } catch {
-    return c.json({ success: false, message: 'Lỗi đăng nhập.' }, 500);
+  } catch (err: any) {
+    return c.json({ success: false, message: err?.message || 'Lỗi đăng nhập.' }, 500);
   }
 });
 
