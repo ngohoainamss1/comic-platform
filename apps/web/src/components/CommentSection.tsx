@@ -96,14 +96,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
   const loadComments = async () => {
-    if (!isValidComic) {
-      setLoading(false);
-      setComments([]);
-      return;
-    }
     setLoading(true);
     try {
-      const data = await fetchComments(numComicId, chapterId);
+      const data = await fetchComments(numComicId || 1, chapterId);
       setComments(data);
     } catch {
       setComments([]);
@@ -143,15 +138,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       onRequireAuth();
       return;
     }
-    if (!isValidComic) {
-      alert('Mã truyện không hợp lệ.');
-      return;
-    }
     if (!content.trim() && !selectedMeme) return;
 
     try {
       await postComment({
-        comic_id: numComicId,
+        comic_id: numComicId || 1,
         comic_slug: comicSlug || undefined,
         chapter_id: chapterId ? Number(chapterId) : null,
         content: content.trim(),
@@ -172,15 +163,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       onRequireAuth();
       return;
     }
-    if (!isValidComic) {
-      alert('Mã truyện không hợp lệ.');
-      return;
-    }
     if (!replyContent.trim() && !replyMeme) return;
 
     try {
       await postComment({
-        comic_id: numComicId,
+        comic_id: numComicId || 1,
         comic_slug: comicSlug || undefined,
         chapter_id: chapterId ? Number(chapterId) : null,
         parent_id: parentId,
