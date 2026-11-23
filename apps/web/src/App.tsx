@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Bookmark,
@@ -116,6 +116,35 @@ export function App() {
   // Dữ liệu chung
   const [genres, setGenres] = useState<GenreItem[]>([]);
   const [heroComics, setHeroComics] = useState<ComicSummary[]>([]);
+  const hotScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollHotLeft = () => {
+    if (hotScrollRef.current) {
+      hotScrollRef.current.scrollBy({ left: -hotScrollRef.current.clientWidth, behavior: 'smooth' });
+    }
+  };
+
+  const scrollHotRight = () => {
+    if (hotScrollRef.current) {
+      hotScrollRef.current.scrollBy({ left: hotScrollRef.current.clientWidth, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    if (view !== 'home' || heroComics.length === 0) return;
+    const interval = setInterval(() => {
+      if (hotScrollRef.current) {
+        const { scrollLeft, scrollWidth, clientWidth } = hotScrollRef.current;
+        if (scrollLeft + clientWidth >= scrollWidth - 10) {
+          hotScrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          hotScrollRef.current.scrollBy({ left: clientWidth, behavior: 'smooth' });
+        }
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [view, heroComics.length]);
+
   const [sidebarRanking, setSidebarRanking] = useState<ComicSummary[]>([]);
   const [sidebarRankTab, setSidebarRankTab] = useState<'top-day' | 'top-week' | 'top-month'>('top-day');
 
@@ -1124,8 +1153,24 @@ export function App() {
               <h2 className="text-txt-primary text-xl font-semibold uppercase flex items-center gap-2">
                 <Flame className="w-6 h-6 text-[#FF453A]" /> Truyện Hentai Hot
               </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={scrollHotLeft}
+                  className="w-8 h-8 rounded-lg bg-bgc-layer2 border border-bd-default flex items-center justify-center text-txt-primary hover:bg-lav-500/20 hover:border-lav-500 transition cursor-pointer"
+                  title="Trang trước"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={scrollHotRight}
+                  className="w-8 h-8 rounded-lg bg-bgc-layer2 border border-bd-default flex items-center justify-center text-txt-primary hover:bg-lav-500/20 hover:border-lav-500 transition cursor-pointer"
+                  title="Trang sau"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+            <div ref={hotScrollRef} className="grid grid-flow-col auto-cols-[calc(50%-6px)] sm:auto-cols-[calc(25%-9px)] gap-3 overflow-x-auto no-scrollbar scroll-smooth">
               {heroComics.map((hc) => (
                 <article
                   key={hc.id}
