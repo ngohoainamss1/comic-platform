@@ -28,15 +28,25 @@ export const RecentCommentsWidget: React.FC<RecentCommentsWidgetProps> = ({
 
   useEffect(() => {
     let mounted = true;
-    fetchRecentComments(20)
-      .then((list) => {
-        if (mounted) setComments(list);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+    const loadRecent = () => {
+      fetchRecentComments(20)
+        .then((list) => {
+          if (mounted) setComments(list);
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    };
+
+    loadRecent();
+
+    const handleCommentPosted = () => {
+      loadRecent();
+    };
+    window.addEventListener('comic:comment-posted', handleCommentPosted);
     return () => {
       mounted = false;
+      window.removeEventListener('comic:comment-posted', handleCommentPosted);
     };
   }, []);
 

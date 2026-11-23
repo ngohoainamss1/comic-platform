@@ -160,6 +160,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       setSelectedMeme(null);
       setPickerOpen(false);
       loadComments();
+      window.dispatchEvent(new CustomEvent('comic:comment-posted'));
     } catch (err) {
       alert((err as Error).message || 'Không thể đăng bình luận.');
     }
@@ -191,6 +192,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       setReplyingToName(null);
       setPickerOpen(false);
       loadComments();
+      window.dispatchEvent(new CustomEvent('comic:comment-posted'));
     } catch (err) {
       alert((err as Error).message || 'Không thể gửi trả lời.');
     }
