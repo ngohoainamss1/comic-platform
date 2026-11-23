@@ -231,6 +231,10 @@ export function App() {
     fetchCurrentUser().then(setCurrentUser).catch(() => {});
   }, [loadSettings]);
 
+  useEffect(() => {
+    fetchCurrentUser().then(setCurrentUser).catch(() => {});
+  }, [view]);
+
   // Initial deep link hydration
   useEffect(() => {
     if (initRoute.view === 'detail' && initRoute.slug) {

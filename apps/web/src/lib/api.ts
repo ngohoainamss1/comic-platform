@@ -743,7 +743,7 @@ export interface RecentCommentItem {
 
 export async function fetchRecentComments(limit = 20): Promise<RecentCommentItem[]> {
   try {
-    const res = await requestJson<{ comments?: RecentCommentItem[] }>(`/api/comments/recent?limit=${limit}`);
+    const res = await requestJson<{ comments?: RecentCommentItem[] }>(`/api/comments/recent?limit=${limit}&_t=${Date.now()}`);
     return res.comments || [];
   } catch {
     return [];
