@@ -89,9 +89,19 @@ commentsRoutes.get('/', optionalUserAuth, async (c) => {
       }
     }
 
+    if ((!Number.isFinite(comicId) || comicId <= 0) && body.comic_slug) {
+      const slug = String(body.comic_slug).trim();
+      const cmRes = await db.execute({
+        sql: `SELECT id FROM comics WHERE slug = ? LIMIT 1`,
+        args: [slug],
+      });
+      if (cmRes.rows.length > 0 && cmRes.rows[0].id) {
+        comicId = Number(cmRes.rows[0].id);
+      }
+    }
+
     if (!Number.isFinite(comicId) || comicId <= 0) {
-      const firstComic = await db.execute(`SELECT id FROM comics ORDER BY id ASC LIMIT 1`);
-      comicId = firstComic.rows.length > 0 ? Number(firstComic.rows[0].id) : 1;
+      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
     }
 
     const currentUser = c.get('user');
@@ -228,9 +238,19 @@ commentsRoutes.post('/', requireUserAuth, async (c) => {
       }
     }
 
+    if ((!Number.isFinite(comicId) || comicId <= 0) && body.comic_slug) {
+      const slug = String(body.comic_slug).trim();
+      const cmRes = await db.execute({
+        sql: `SELECT id FROM comics WHERE slug = ? LIMIT 1`,
+        args: [slug],
+      });
+      if (cmRes.rows.length > 0 && cmRes.rows[0].id) {
+        comicId = Number(cmRes.rows[0].id);
+      }
+    }
+
     if (!Number.isFinite(comicId) || comicId <= 0) {
-      const firstComic = await db.execute(`SELECT id FROM comics ORDER BY id ASC LIMIT 1`);
-      comicId = firstComic.rows.length > 0 ? Number(firstComic.rows[0].id) : 1;
+      return c.json({ success: false, message: 'Mã truyện không hợp lệ.' }, 400);
     }
     if (!content && !memeUrl) {
       return c.json({ success: false, message: 'Bình luận không được để trống nội dung hoặc meme.' }, 400);

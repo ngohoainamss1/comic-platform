@@ -152,6 +152,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     try {
       await postComment({
         comic_id: numComicId,
+        comic_slug: comicSlug || undefined,
         chapter_id: chapterId ? Number(chapterId) : null,
         content: content.trim(),
         meme_url: selectedMeme,
@@ -180,6 +181,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     try {
       await postComment({
         comic_id: numComicId,
+        comic_slug: comicSlug || undefined,
         chapter_id: chapterId ? Number(chapterId) : null,
         parent_id: parentId,
         reply_to_name: replyingToName,

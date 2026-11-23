@@ -647,6 +647,7 @@ export async function fetchComments(comicId: number, chapterId?: number | null):
 
 export async function postComment(payload: {
   comic_id: number;
+  comic_slug?: string;
   chapter_id?: number | null;
   parent_id?: number | null;
   reply_to_name?: string | null;
