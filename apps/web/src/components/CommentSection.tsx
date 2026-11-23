@@ -95,9 +95,6 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
-  const numComicId = Number(resolvedComicId);
-  const isValidComic = Number.isFinite(numComicId) && numComicId > 0;
-
   const loadComments = async () => {
     if (!isValidComic) {
       setLoading(false);
