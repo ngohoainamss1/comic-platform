@@ -623,6 +623,8 @@ adminRoutes.get('/spotlights', async (c) => {
 
 adminRoutes.post('/spotlights', async (c) => {
   try {
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const title = String(body.title || '').trim();
     const targetUrl = String(body.target_url || '').trim();
@@ -638,8 +640,6 @@ adminRoutes.post('/spotlights', async (c) => {
 
     const rawCode = String(body.code || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
     const code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}${Date.now().toString(36).slice(-4)}`;
-
-    const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     await db.execute({
       sql: `INSERT INTO spotlight_campaigns
@@ -669,6 +669,8 @@ adminRoutes.post('/spotlights', async (c) => {
 
 adminRoutes.patch('/spotlights/:id', async (c) => {
   try {
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
     const id = Number(c.req.param('id'));
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const fields: string[] = [];
@@ -685,8 +687,6 @@ adminRoutes.patch('/spotlights/:id', async (c) => {
 
     fields.push('updated_at = CURRENT_TIMESTAMP');
     args.push(id);
-
-    const db = getDb(c.env);
     await db.execute({ sql: `UPDATE spotlight_campaigns SET ${fields.join(', ')} WHERE id = ?`, args });
     return c.json({ success: true, message: 'Đã cập nhật chiến dịch.' });
   } catch {
@@ -696,8 +696,9 @@ adminRoutes.patch('/spotlights/:id', async (c) => {
 
 adminRoutes.delete('/spotlights/:id', async (c) => {
   try {
-    const id = Number(c.req.param('id'));
     const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+    const id = Number(c.req.param('id'));
     await db.execute({ sql: 'DELETE FROM spotlight_campaigns WHERE id = ?', args: [id] });
     return c.json({ success: true, message: 'Đã xóa chiến dịch.' });
   } catch {
