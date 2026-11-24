@@ -1017,7 +1017,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                       <X className="w-5 h-5" />
                     </button>
                   </div>
-                  <div className="space-y-3 text-xs">
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      try {
+                        if (!editingSpotlight?.target_url) {
+                          showToast('Vui lòng nhập Link Affiliate đích (Target URL)', 'err');
+                          return;
+                        }
+                        const payload = {
+                          ...editingSpotlight,
+                          placement: 'gesture_pop',
+                          image_url: editingSpotlight.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'
+                        };
+                        if (editingSpotlight.id) {
+                          await adminApi.updateSpotlight(editingSpotlight.id, payload);
+                          showToast('Đã cập nhật chiến dịch');
+                        } else {
+                          await adminApi.createSpotlight(payload);
+                          showToast('Đã tạo chiến dịch mới');
+                        }
+                        setEditingSpotlight(null);
+                        setSpotlightRows(await adminApi.getSpotlights());
+                      } catch (err) {
+                        showToast((err as Error).message, 'err');
+                      }
+                    }}
+                    className="space-y-3 text-xs"
+                  >
                     <div>
                       <label className="text-zinc-400 font-bold block mb-1">Tiêu đề chiến dịch</label>
                       <input
@@ -1080,12 +1107,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                       </button>
                       <button
                         type="submit"
-                        className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold"
+                        className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold cursor-pointer"
                       >
                         Lưu chiến dịch
                       </button>
                     </div>
-                  </div>
+                  </form>
                 </div>
               </div>
             )}
