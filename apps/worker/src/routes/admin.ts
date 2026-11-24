@@ -47,7 +47,7 @@ adminRoutes.get('/stats', async (c) => {
         db.execute("SELECT COUNT(*) AS open_reports FROM chapter_reports WHERE status = 'open'"),
         db.execute("SELECT COUNT(*) AS active_wl FROM comic_watchlists WHERE status = 'active'"),
         db.execute('SELECT COUNT(*) AS total, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) AS active FROM sync_sources'),
-        db.execute('SELECT id, slug, title, views_day, views_total, updated_at FROM comics ORDER BY updated_at DESC LIMIT 8'),
+        db.execute('SELECT id, slug, finalTitle as title, views_day, views_total, updated_at FROM comics ORDER BY updated_at DESC LIMIT 8'),
       ]);
     const cRow = comicsRes.rows[0] || {};
     const jRow = jobsRes.rows[0] || {};
@@ -115,7 +115,7 @@ adminRoutes.get('/comics', async (c) => {
     const total = Number(countRes.rows[0]?.total || 0);
     const listRes = await db.execute({
       sql: `
-        SELECT c.id, c.slug, c.title, c.alt_titles, c.description, c.cover_file_id, c.cover_gh_path,
+        SELECT c.id, c.slug, c.finalTitle as title, c.alt_titles, c.description, c.cover_file_id, c.cover_gh_path,
                c.status, COALESCE(c.is_featured, 0) AS is_featured, COALESCE(c.is_hidden, 0) AS is_hidden,
                c.views_total, c.rating_avg, c.updated_at, a.name AS author_name,
                (SELECT COUNT(*) FROM chapters ch WHERE ch.comic_id = c.id) AS chapter_count,
@@ -208,7 +208,7 @@ adminRoutes.get('/comics/:id/chapters', async (c) => {
   try {
     const db = getDb(c.env);
     const res = await db.execute({
-      sql: `SELECT ch.id, ch.chapter_number, ch.title, ch.views, ch.created_at,
+      sql: `SELECT ch.id, ch.chapter_number, ch.finalTitle as title, ch.views, ch.created_at,
                    (SELECT COUNT(*) FROM chapter_pages p WHERE p.chapter_id = ch.id) AS page_count
             FROM chapters ch WHERE ch.comic_id = ? ORDER BY ch.chapter_number DESC`,
       args: [Number(c.req.param('id'))],
@@ -416,7 +416,7 @@ adminRoutes.get('/watchlist', async (c) => {
   try {
     const db = getDb(c.env);
     const res = await db.execute(`
-      SELECT w.*, c.title AS comic_title, c.slug AS comic_slug
+      SELECT w.*, c.title AS comic_finalTitle as title, c.slug AS comic_slug
       FROM comic_watchlists w JOIN comics c ON c.id = w.comic_id
       ORDER BY w.priority DESC, w.next_check_at ASC LIMIT 100
     `);
@@ -531,7 +531,7 @@ adminRoutes.get('/reports', async (c) => {
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     const res = await db.execute(`
-      SELECT r.*, c.title AS comic_title, c.slug AS comic_slug, ch.chapter_number
+      SELECT r.*, c.title AS comic_finalTitle as title, c.slug AS comic_slug, ch.chapter_number
       FROM chapter_reports r LEFT JOIN comics c ON c.id = r.comic_id LEFT JOIN chapters ch ON ch.id = r.chapter_id
       ORDER BY CASE WHEN r.status = 'open' THEN 0 ELSE 1 END, r.created_at DESC LIMIT 100
     `);
@@ -634,16 +634,16 @@ adminRoutes.post('/spotlights', async (c) => {
     await ensureSchemaMigrated(db);
     await db.execute({
       sql: `INSERT INTO spotlight_campaigns
-            (code, platform, placement, title, subtitle, cta_text, image_url, target_url, badge_text, priority, trigger_page, cooldown_hours, is_active)
+            (code, platform, placement, finalTitle as title, subfinalTitle as title, cta_text, image_url, target_url, badge_text, priority, trigger_page, cooldown_hours, is_active)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         code,
         platform,
         placement,
-        title,
+        title || (platform === 'shopee' ? 'Shopee Deal' : 'TikTok Shop Deal'),
         String(body.subtitle || '').trim(),
         String(body.cta_text || 'Săn Deal Ngay').trim(),
-        imageUrl,
+        imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
         targetUrl,
         String(body.badge_text || 'HOT').trim(),
         Number(body.priority || 10),

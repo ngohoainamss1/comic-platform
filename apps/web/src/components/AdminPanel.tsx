@@ -1021,11 +1021,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                     onSubmit={async (e) => {
                       e.preventDefault();
                       try {
+                        const payload = {
+                          ...editingSpotlight,
+                          placement: 'gesture_pop',
+                          image_url: editingSpotlight.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'
+                        };
                         if (editingSpotlight.id) {
-                          await adminApi.updateSpotlight(editingSpotlight.id, editingSpotlight);
+                          await adminApi.updateSpotlight(editingSpotlight.id, payload);
                           showToast('Đã cập nhật chiến dịch');
                         } else {
-                          await adminApi.createSpotlight(editingSpotlight);
+                          await adminApi.createSpotlight(payload);
                           showToast('Đã tạo chiến dịch mới');
                         }
                         setEditingSpotlight(null);
@@ -1039,11 +1044,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                     <div>
                       <label className="text-zinc-400 font-bold block mb-1">Tiêu đề chiến dịch</label>
                       <input
-                        required
                         value={editingSpotlight.title || ''}
                         onChange={(e) => setEditingSpotlight({ ...editingSpotlight, title: e.target.value })}
                         className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        placeholder="Ví dụ: Sale Siêu Hội Shopee 12.12"
+                        placeholder="Ví dụ: Shopee Sale 12.12 (Để trống sẽ tự đặt tên)"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1070,7 +1074,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                       </div>
                     </div>
                     <div>
-                      <label className="text-zinc-400 font-bold block mb-1">Link Affiliate đích (Target URL)</label>
+                      <label className="text-zinc-400 font-bold block mb-1">Link Affiliate đích (Target URL) *</label>
                       <input
                         required
                         type="url"
@@ -1081,78 +1085,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                       />
                     </div>
                     <div>
-                      <label className="text-zinc-400 font-bold block mb-1">Link Ảnh Banner (Image URL)</label>
+                      <label className="text-zinc-400 font-bold block mb-1">Độ ưu tiên (Priority - số càng cao ưu tiên càng lớn)</label>
                       <input
-                        required
-                        type="url"
-                        value={editingSpotlight.image_url || ''}
-                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, image_url: e.target.value })}
+                        type="number"
+                        value={editingSpotlight.priority ?? 10}
+                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, priority: Number(e.target.value) })}
                         className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        placeholder="https://..."
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-zinc-400 font-bold block mb-1">Vị trí hiển thị (Placement)</label>
-                        <select
-                          value={editingSpotlight.placement || 'reader_end'}
-                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, placement: e.target.value as any })}
-                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        >
-                          <option value="home_native">Trang chủ (Native Card)</option>
-                          <option value="detail_cta">Trang chi tiết truyện</option>
-                          <option value="reader_mid">Giữa chương đọc</option>
-                          <option value="reader_end">Cuối chương đọc</option>
-                          <option value="sticky_bar">Thanh dính đáy màn hình</option>
-                          <option value="gesture_pop">Popup chuyển chap (Smart Redirect)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-zinc-400 font-bold block mb-1">Badge Text</label>
-                        <input
-                          value={editingSpotlight.badge_text || ''}
-                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, badge_text: e.target.value })}
-                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                          placeholder="HOT / SALE"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-zinc-400 font-bold block mb-1">Độ ưu tiên</label>
-                        <input
-                          type="number"
-                          value={editingSpotlight.priority ?? 10}
-                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, priority: Number(e.target.value) })}
-                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-zinc-400 font-bold block mb-1">Trigger Trang (mid)</label>
-                        <input
-                          type="number"
-                          value={editingSpotlight.trigger_page ?? 4}
-                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, trigger_page: Number(e.target.value) })}
-                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-zinc-400 font-bold block mb-1">Cooldown (Giờ)</label>
-                        <input
-                          type="number"
-                          value={editingSpotlight.cooldown_hours ?? 12}
-                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, cooldown_hours: Number(e.target.value) })}
-                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-zinc-400 font-bold block mb-1">Phụ đề (Subtitle / Khuyến mại)</label>
-                      <input
-                        value={editingSpotlight.subtitle || ''}
-                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, subtitle: e.target.value })}
-                        className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        placeholder="Giảm 50K đơn 99K"
                       />
                     </div>
                     <div className="flex justify-end gap-2 pt-2">

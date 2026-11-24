@@ -1,4 +1,3 @@
-import { PartnerSlot } from './components/PartnerSlot';
 import { fetchSpotlights, type SpotlightCampaign } from './lib/api';
 import { triggerSmartRedirect } from './lib/spotlight';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -2062,9 +2061,7 @@ export function App() {
                   </div>
                 )}
 
-                {spotlights.length > 0 && selectedComic && (
-                  <PartnerSlot campaigns={spotlights} placement="detail_cta" refSlug={selectedComic.slug} />
-                )}
+                
                 {/* CÓ THỂ BẠN SẼ THÍCH */}
                 <div className="mt-8 space-y-4">
                   <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase flex items-center gap-2 border-l-4 border-mag-500 pl-3">
@@ -2366,7 +2363,7 @@ export function App() {
       )}
 
       {/* Auth Modal */}
-      {spotlights.length > 0 && <PartnerSlot campaigns={spotlights} placement="sticky_bar" refSlug={selectedComic?.slug || 'global'} />}
+      
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

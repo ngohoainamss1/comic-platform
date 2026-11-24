@@ -1,4 +1,3 @@
-import { PartnerSlot } from './PartnerSlot';
 import type { SpotlightCampaign } from '../lib/api';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -420,13 +419,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                     decoding="async"
                     className="w-full h-auto block select-none bg-zinc-900/40"
                   />
-                  {totalPages >= 5 && idx === midInsertIdx && spotlights && spotlights.length > 0 && (
-                    <PartnerSlot
-                      campaigns={spotlights}
-                      placement="reader_mid"
-                      refSlug={data.chapter.comic_slug}
-                    />
-                  )}
+                  
                 </React.Fragment>
               );
             })}
