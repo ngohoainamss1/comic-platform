@@ -58,7 +58,21 @@ export function triggerSmartRedirect(
   refSlug = 'browse'
 ): boolean {
   if (settings.aff_smart_redirect_enabled === '0') return false;
-  if (!campaigns || campaigns.length === 0) return false;
+  
+  let activeCampaigns = campaigns;
+  if (!activeCampaigns || activeCampaigns.length === 0) {
+    try {
+      const cached = localStorage.getItem('vr_cached_spotlights');
+      if (cached) activeCampaigns = JSON.parse(cached);
+    } catch {}
+  }
+
+  if (!activeCampaigns || activeCampaigns.length === 0) return false;
+
+  // Cache current campaigns for future instant trigger
+  try {
+    localStorage.setItem('vr_cached_spotlights', JSON.stringify(campaigns));
+  } catch {}
 
   const cooldownHours = Math.max(0, Number(settings.aff_cooldown_hours ?? 4));
   const dailyCap = Math.max(1, Number(settings.aff_daily_cap ?? 3));
@@ -90,7 +104,7 @@ export function triggerSmartRedirect(
     return false;
   }
 
-  const picked = pickRandomAffiliate(campaigns);
+  const picked = pickRandomAffiliate(activeCampaigns);
   if (!picked) return false;
 
   guard.lastPopAt = Date.now();
@@ -108,7 +122,7 @@ export function triggerSmartRedirect(
   return true;
 }
 
-export function pickWeightedCampaign(campaigns: SpotlightCampaign[], placement: string): SpotlightCampaign | null {
+export function pickWeightedCampaign(campaigns: SpotlightCampaign[], _placement: string): SpotlightCampaign | null {
   return pickRandomAffiliate(campaigns);
 }
 
