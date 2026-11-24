@@ -104,8 +104,6 @@ export function triggerSmartRedirect(
   setSessionActions(sessionActs);
 
   if (cooldownHours > 0) {
-    if (sessionActs <= 1) return false;
-
     const guard = readGuard();
     if (guard.dayCount >= dailyCap) return false;
 
