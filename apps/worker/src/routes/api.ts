@@ -126,7 +126,8 @@ apiRoutes.get('/comics', async (c) => {
                c.status, COALESCE(c.is_featured, 0) AS is_featured,
                c.views_day, c.views_week, c.views_month, c.views_total,
                c.rating_avg, c.updated_at,
-               (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter
+               (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter,
+               (SELECT ch.id FROM chapters ch WHERE ch.comic_id = c.id ORDER BY ch.chapter_number DESC LIMIT 1) AS latest_chapter_id
         FROM comics c
         WHERE ${whereClause}
         ORDER BY ${orderBy}
@@ -213,7 +214,8 @@ apiRoutes.get('/comics/:slug', async (c) => {
           db.execute({
             sql: `SELECT c.id, c.slug, c.title, c.cover_file_id, c.cover_gh_path, c.status,
                          c.views_day, c.views_week, c.views_month, c.views_total, c.rating_avg, c.updated_at,
-                         (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter
+                         (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = c.id) AS latest_chapter,
+               (SELECT ch.id FROM chapters ch WHERE ch.comic_id = c.id ORDER BY ch.chapter_number DESC LIMIT 1) AS latest_chapter_id
                   FROM comics c WHERE c.author_id = ? AND c.id != ? AND COALESCE(c.is_hidden, 0) = 0
                   ORDER BY c.updated_at DESC LIMIT 8`,
             args: [authorId, comicId],

@@ -57,6 +57,7 @@ export interface ComicSummary {
   views_total: number;
   rating_avg: number;
   latest_chapter: number | null;
+  latest_chapter_id?: number | null;
   updated_at: string;
 }
 

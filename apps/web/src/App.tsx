@@ -1510,9 +1510,21 @@ export function App() {
                           {comic.title}
                         </h3>
                         <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
-                          <span className="font-medium text-txt-focus">
-                            {comic.latest_chapter !== null ? `Chap ${comic.latest_chapter}` : 'Đang cập nhật'}
-                          </span>
+                          <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (comic.latest_chapter_id) {
+                              triggerSmartRedirect(spotlights, settings, comic.slug);
+                              openChapter(comic.latest_chapter_id);
+                            } else {
+                              openComicDetail(comic.slug);
+                            }
+                          }}
+                          className="font-medium text-txt-focus hover:text-lav-400 cursor-pointer underline decoration-lav-500/50"
+                          title="Đọc chương mới nhất"
+                        >
+                          {comic.latest_chapter !== null ? `Chap ${comic.latest_chapter}` : 'Đang cập nhật'}
+                        </span>
                           <span className="text-txt-secondary">{formatRelTime(comic.updated_at)}</span>
                         </div>
                       </div>
