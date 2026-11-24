@@ -3,8 +3,41 @@ import type { Client } from '@libsql/client/web';
 let migrated = false;
 
 export async function ensureSchemaMigrated(db: Client): Promise<void> {
-  if (migrated) return;
   try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS spotlight_campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        platform TEXT NOT NULL DEFAULT 'shopee',
+        placement TEXT NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        cta_text TEXT DEFAULT 'Săn Deal Ngay',
+        image_url TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        badge_text TEXT DEFAULT 'HOT',
+        priority INTEGER DEFAULT 10,
+        trigger_page INTEGER DEFAULT 4,
+        cooldown_hours INTEGER DEFAULT 12,
+        is_active INTEGER DEFAULT 1,
+        clicks_total INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS spotlight_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER NOT NULL,
+        placement TEXT NOT NULL,
+        ref_slug TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (campaign_id) REFERENCES spotlight_campaigns(id) ON DELETE CASCADE
+      )
+    `);
+
+    if (migrated) return;
     await db.execute(
       `CREATE TABLE IF NOT EXISTS admin_audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
