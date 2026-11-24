@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import {
   adminApi,
+  getSpotlightGoUrl,
   adminLogin,
   type AdminComicRow,
   type AdminJobRow,
@@ -977,7 +978,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                       </td>
                       <td className="p-3 text-right space-x-2">
                         <button
-                          onClick={() => window.open(`/go/${encodeURIComponent(s.code)}?ref=admin-test`, '_blank')}
+                          onClick={() => window.open(getSpotlightGoUrl(s.code, 'admin-test'), '_blank', 'noopener,noreferrer')}
                           className="px-2 py-1 rounded bg-sky-500/20 text-sky-300 font-bold"
                         >
                           Test Link
@@ -1217,6 +1218,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                     className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
                   />
                 </div>
+              </div>
+              <div className="pt-2">
+                <label className="text-[11px] text-zinc-400 block mb-1">Tỷ lệ Random kích hoạt (%) (VD: 40 = 40% cơ hội mỗi cú bấm)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={settings.aff_trigger_chance || '40'}
+                  onChange={(e) => setSettings({ ...settings, aff_trigger_chance: e.target.value })}
+                  className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
+                />
               </div>
             </div>
 

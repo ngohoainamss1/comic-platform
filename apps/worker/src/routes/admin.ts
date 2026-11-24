@@ -581,7 +581,7 @@ adminRoutes.get('/settings', async (c) => {
 adminRoutes.put('/settings', async (c) => {
   try {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, string>;
-    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap'];
+    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap', 'aff_trigger_chance'];
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     for (const k of allowedKeys) {
@@ -628,7 +628,7 @@ adminRoutes.post('/spotlights', async (c) => {
     await ensureSchemaMigrated(db);
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const title = String(body.title || '').trim();
-    const targetUrl = String(body.target_url || '').trim();
+    let targetUrl = String(body.target_url || '').trim();
     const imageUrl = String(body.image_url || '').trim();
     const placement = String(body.placement || 'gesture_pop').trim();
     const platform = String(body.platform || 'shopee').trim();
@@ -636,11 +636,33 @@ adminRoutes.post('/spotlights', async (c) => {
     if (!targetUrl) {
       return c.json({ success: false, message: 'Vui lòng nhập Link Affiliate đích (Target URL).' }, 400);
     }
+
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      targetUrl = 'https://' + targetUrl;
+    }
+
+    try {
+      new URL(targetUrl);
+    } catch {
+      return c.json({ success: false, message: 'Link Affiliate đích (Target URL) không hợp lệ.' }, 400);
+    }
+
     const finalTitle = title || (platform === 'shopee' ? 'Shopee Deal' : 'TikTok Shop Deal');
     const finalImageUrl = imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300';
 
-    const rawCode = String(body.code || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
-    const code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}${Date.now().toString(36).slice(-4)}`;
+    let rawCode = String(body.code || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+    let code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}${Date.now().toString(36).slice(-4)}`;
+
+    // Check unique code
+    const existing = await db.execute({ sql: 'SELECT id FROM spotlight_campaigns WHERE code = ? LIMIT 1', args: [code] });
+    if (existing.rows.length > 0 && rawCode) {
+      return c.json({ success: false, message: `Mã code '${code}' đã tồn tại, vui lòng chọn mã khác.` }, 400);
+    }
+    while (existing.rows.length > 0 && !rawCode) {
+      code = `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}${Date.now().toString(36).slice(-4)}`;
+      const checkAgain = await db.execute({ sql: 'SELECT id FROM spotlight_campaigns WHERE code = ? LIMIT 1', args: [code] });
+      if (checkAgain.rows.length === 0) break;
+    }
     await ensureSchemaMigrated(db);
     await db.execute({
       sql: `INSERT INTO spotlight_campaigns

@@ -12,7 +12,7 @@ apiRoutes.get('/settings/public', async (c) => {
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     const res = await db.execute(
-      "SELECT key, value FROM site_settings WHERE key IN ('site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap')"
+      "SELECT key, value FROM site_settings WHERE key IN ('site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap', 'aff_trigger_chance')"
     );
     const settings: Record<string, string> = {
       site_name: 'VinaReader',
@@ -22,6 +22,7 @@ apiRoutes.get('/settings/public', async (c) => {
       aff_smart_redirect_enabled: '1',
       aff_cooldown_hours: '6',
       aff_daily_cap: '2',
+      aff_trigger_chance: '40',
     };
     for (const row of res.rows) {
       settings[String(row.key)] = String(row.value ?? '');

@@ -139,6 +139,7 @@ export interface PublicSettings {
   aff_smart_redirect_enabled?: string;
   aff_cooldown_hours?: string;
   aff_daily_cap?: string;
+  aff_trigger_chance?: string;
 }
 
 export interface FetchComicsParams {
