@@ -637,7 +637,7 @@ adminRoutes.post('/spotlights', async (c) => {
     const finalImageUrl = imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300';
 
     const rawCode = String(body.code || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
-    const code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}`;
+    const code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}${Date.now().toString(36).slice(-4)}`;
 
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);

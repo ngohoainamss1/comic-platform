@@ -930,7 +930,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base text-white">Quản lý Affiliate & Spotlight Deals</h3>
               <button
-                onClick={() => setEditingSpotlight({ platform: 'shopee', placement: 'reader_end', priority: 10, trigger_page: 4, cooldown_hours: 12, is_active: 1 })}
+                onClick={() => setEditingSpotlight({ platform: 'shopee', placement: 'gesture_pop', priority: 10, is_active: 1, code: '' })}
                 className="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-xs font-bold text-white flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" /> Thêm chiến dịch
@@ -1057,7 +1057,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                           value={editingSpotlight.code || ''}
                           onChange={(e) => setEditingSpotlight({ ...editingSpotlight, code: e.target.value })}
                           className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white font-mono"
-                          placeholder="shopee-1212"
+                          placeholder="vd: shopee-sale-1212 (để trống tự tạo)"
                         />
                       </div>
                       <div>
