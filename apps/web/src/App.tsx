@@ -101,7 +101,14 @@ function formatRelTime(iso: string): string {
 }
 
 export function App() {
-  const [spotlights, setSpotlights] = useState<SpotlightCampaign[]>([]);
+  const [spotlights, setSpotlights] = useState<SpotlightCampaign[]>(() => {
+    try {
+      const cached = localStorage.getItem('vr_cached_spotlights');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const initRoute = useMemo(() => parseRouteFromLocation(), []);
   const [view, setView] = useState<ViewMode>(initRoute.view);
   const [libraryTab, setLibraryTab] = useState<'bookmarks' | 'history'>(initRoute.libraryTab || 'bookmarks');
