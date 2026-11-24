@@ -32,7 +32,7 @@ function appendAffiliateTracking(rawUrl: string, platform: string, placement: st
 spotlightRedirectRoutes.get('/:code', async (c) => {
   const code = (c.req.param('code') || '').trim();
   const refSlug = (c.req.query('ref') || 'direct').slice(0, 100);
-  if (!code) return c.redirect('/', 302);
+  if (!code) return c.redirect('https://shopee.vn', 302);
 
   try {
     const db = getDb(c.env);
@@ -44,7 +44,7 @@ spotlightRedirectRoutes.get('/:code', async (c) => {
     });
 
     if (res.rows.length === 0) {
-      return c.redirect('/', 302);
+      return c.redirect('https://shopee.vn', 302);
     }
 
     const row = res.rows[0];
@@ -54,7 +54,7 @@ spotlightRedirectRoutes.get('/:code', async (c) => {
     const targetUrl = String(row.target_url || '').trim();
 
     if (!/^https?:\/\//i.test(targetUrl)) {
-      return c.redirect('/', 302);
+      return c.redirect('https://shopee.vn', 302);
     }
 
     const finalUrl = appendAffiliateTracking(targetUrl, platform, placement, refSlug, code);
@@ -80,6 +80,6 @@ spotlightRedirectRoutes.get('/:code', async (c) => {
 
     return c.redirect(finalUrl, 302);
   } catch {
-    return c.redirect('/', 302);
+    return c.redirect('https://shopee.vn', 302);
   }
 });
