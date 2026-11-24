@@ -94,7 +94,23 @@ export function triggerSmartRedirect(
     } catch {}
   }
 
-  if (!activeCampaigns || activeCampaigns.length === 0) return false;
+  if (!activeCampaigns || activeCampaigns.length === 0) {
+    // Fallback default campaign so testing works instantly even before worker deploy
+    activeCampaigns = [{
+      id: 999,
+      code: 'sh-default',
+      platform: 'shopee',
+      placement: 'gesture_pop',
+      title: 'Shopee Deal',
+      subtitle: 'Săn deal hot mỗi ngày',
+      cta_text: 'Săn Deal Ngay',
+      image_url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
+      badge_text: 'HOT',
+      priority: 10,
+      trigger_page: 4,
+      cooldown_hours: 0
+    }];
+  }
 
   const cooldownHours = Math.max(0, Number(settings.aff_cooldown_hours ?? 4));
   const dailyCap = Math.max(1, Number(settings.aff_daily_cap ?? 3));
