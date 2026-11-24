@@ -189,19 +189,21 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
         seen_nums: set[float] = set()
 
         chapter_links = soup.select(
-            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, "
-            "#nt_listchapter .chapter a, #list-chapter a, .list-chapter a, "
-            ".list_chapter a, .chapter-list a, .works-chapter-list a, "
-            ".box-list-chapter a, .row-content-chapter a, .wp-manga-chapter a, "
-            "ul.chapters a, .episode-list a"
+            "a[aria-label*='Đọc chương'], "
+            ".chapter-list a, .list-chapter a, #list-chapter a, "
+            ".list_chapter a, .works-chapter-list a, .box-list-chapter a, "
+            ".row-content-chapter a, .wp-manga-chapter a, ul.chapters a, .episode-list a, "
+            "#nt_listchapter nav ul li.row:not(.heading) .chapter a, #nt_listchapter .chapter a"
         )
+        if not chapter_links:
+            chapter_links = soup.select("a[aria-label*='Đọc chương']")
         if not chapter_links:
             chapter_links = [
                 a
                 for a in soup.select("a[href]")
                 if any(
                     k in (a.get("href") or "").lower()
-                    for k in ("/chuong-", "/chapter-", "chap-", "chap_", "-chuong-", "/oneshot", "oneshot")
+                    for k in ("/chuong", "/chapter", "/chap", "chap", "chuong", "oneshot")
                 )
             ]
 
@@ -217,14 +219,19 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             else:
                 match = re.search(r"(?:chap(?:ter)?|chương|c)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
                 if not match:
-                    match = re.search(r"(?:chuong|chapter|chap|c)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
+                    match = re.search(r"(?:chuong|chapter|chap|c)[-_]?\s*(\d+(?:\.\d+)?)", href, re.IGNORECASE)
                 if match:
                     num = float(match.group(1))
 
             if num is not None and href:
                 if num not in seen_nums:
                     seen_nums.add(num)
-                    chap_title = text.split("\n")[0].strip() if text else f"Chapter {num:g}"
+                    span = a.select_one("span[class*='text-txt-primary'], .chapter-title")
+                    raw_title = span.get_text(strip=True) if span else text.split("\n")[0].strip()
+                    if not raw_title or raw_title.lower() in ["đọc từ đầu", "đọc mới nhất"]:
+                        raw_title = text.split("\n")[0].strip()
+                    cleaned_title = re.sub(r'\s*\d{1,3}(?:[.,]\d{3})+\b.*$', '', raw_title).strip()
+                    chap_title = cleaned_title or f"Chapter {num:g}"
                     chapters.append(ChapterInfo(chapter_number=num, title=chap_title, url=href))
 
         for opt in soup.select("select.select-chapter option, .chapter-nav select option, select[name*='chapter'] option"):
@@ -235,7 +242,7 @@ class StandardHtmlRssAdapter(BaseSourceAdapter):
             text = opt.get_text(" ", strip=True)
             match = re.search(r"(?:chap(?:ter)?|chương)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
             if not match:
-                match = re.search(r"(?:chuong|chapter|chap)[-_]?(\d+(?:\.\d+)?)", href, re.IGNORECASE)
+                match = re.search(r"(?:chuong|chapter|chap)[-_]?\s*(\d+(?:\.\d+)?)", href, re.IGNORECASE)
             if match and href:
                 num = float(match.group(1))
                 if num not in seen_nums:
