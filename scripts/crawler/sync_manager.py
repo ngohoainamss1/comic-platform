@@ -663,6 +663,20 @@ def sync_comic_genres(db_state: dict, comic_id: int, raw_genres: list[str]):
             )
 
 
+
+def get_existing_chapters(db_state, comic_id: int) -> tuple[dict[float, int], dict[str, int]]:
+    res = db_exec(db_state, "SELECT id, chapter_number, title FROM chapters WHERE comic_id = ?", [comic_id])
+    existing_by_number = {}
+    existing_by_title = {}
+    for row in res.rows:
+        ch_id = int(row[0])
+        ch_num = float(row[1])
+        ch_title = str(row[2] or "").strip().lower()
+        existing_by_number[ch_num] = ch_id
+        if ch_title:
+            existing_by_title[ch_title] = ch_id
+    return existing_by_number, existing_by_title
+
 def ensure_comic_exists(db_state: dict, detail, page_url: str) -> tuple[int, str, bool]:
     slug = normalize_vn_slug(detail.title)
     author_id = sync_author(db_state, getattr(detail, "author", ""))
@@ -922,7 +936,7 @@ def is_chapter_url(url: str) -> bool:
     return any(k in low for k in ("/chap-", "/chuong-", "/chapter-", "/oneshot"))
 
 
-def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int = BATCH_LIMIT):
+def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int = BATCH_LIMIT, fix_chapters: list[float] | None = None, force: bool = False):
     run_t0 = time.monotonic()
     db_state = {"client": get_db()}
     breaker = HostCircuitBreaker(threshold=3)
@@ -988,28 +1002,35 @@ def run_sync(single_comic_url: str = "", mode: str = "auto", max_chapters: int =
                 new_comics_log.append(detail.title)
                 print(f"[Tạo truyện mới] {detail.title} ({len(detail.chapters)} chương)")
 
-            if specific_chap_num is not None:
-                print(f"[Ép cào lại] Xóa dữ liệu cũ của chương {specific_chap_num:g} để cào mới...")
-                db_exec(
-                    db_state,
-                    "DELETE FROM chapters WHERE comic_id = ? AND chapter_number = ?",
-                    [comic_id, specific_chap_num],
-                )
+            existing_by_number, existing_by_title = get_existing_chapters(db_state, comic_id)
+            total_source = len(detail.chapters)
+            already_have = 0
+            new_chapters_to_crawl = []
 
-            existing_nums = {
-                float(r[0])
-                for r in db_exec(db_state, "SELECT chapter_number FROM chapters WHERE comic_id = ?", [comic_id]).rows
-            }
-            job_stmts: list[tuple[str, list]] = []
             for ch in detail.chapters:
-                should_add = ch.chapter_number not in existing_nums or (specific_chap_num is not None and abs(ch.chapter_number - specific_chap_num) < 1e-4)
-                if should_add:
-                    job_stmts.append(
-                        (
-                            "INSERT INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, chapter_title, status) VALUES (?, ?, ?, ?, ?, 'pending') ON CONFLICT(source_chapter_url) DO UPDATE SET status = 'pending', retry_count = 0, error_log = '', chapter_title = excluded.chapter_title",
-                            [src_id, slug, ch.chapter_number, ch.url, ch.title],
-                        )
+                is_forced = force or (fix_chapters is not None and any(abs(ch.chapter_number - fn) < 1e-4 for fn in fix_chapters))
+                if not is_forced and ch.chapter_number in existing_by_number:
+                    already_have += 1
+                else:
+                    new_chapters_to_crawl.append(ch)
+
+            chap_nums_str = ", ".join(f"Chap {ch.chapter_number:g}" for ch in new_chapters_to_crawl[:10])
+            if len(new_chapters_to_crawl) > 10:
+                chap_nums_str += "..."
+            print(f"[Comic: {slug}] Tổng web gốc: {total_source} | Đã có: {already_have} | Cần cào mới: {len(new_chapters_to_crawl)}" + (f" ({chap_nums_str})" if new_chapters_to_crawl else ""))
+
+            if len(new_chapters_to_crawl) == 0 and not force and not fix_chapters:
+                print(f"[Skip] Truyện '{detail.title}' không có chương mới cần cào, bỏ qua.")
+                return
+
+            job_stmts: list[tuple[str, list]] = []
+            for ch in new_chapters_to_crawl:
+                job_stmts.append(
+                    (
+                        "INSERT INTO sync_jobs (source_id, comic_slug, chapter_number, source_chapter_url, chapter_title, status) VALUES (?, ?, ?, ?, ?, 'pending') ON CONFLICT(source_chapter_url) DO UPDATE SET status = 'pending', retry_count = 0, error_log = '', chapter_title = excluded.chapter_title",
+                        [src_id, slug, ch.chapter_number, ch.url, ch.title],
                     )
+                )
             if job_stmts:
                 db_batch(db_state, job_stmts)
             print(f"[Hàng đợi] Đã thêm {len(job_stmts)} chương mới của '{detail.title}' vào sync_jobs.")
@@ -1281,9 +1302,24 @@ if __name__ == "__main__":
         help="Chế độ chạy crawler",
     )
     parser.add_argument("--max-chapters", type=int, default=BATCH_LIMIT, help="Số chương tối đa xử lý trong 1 phiên")
+    parser.add_argument("--fix-chapters", type=str, default="", help="Cào lại các chap cụ thể, cách nhau bằng dấu phẩy (vd: 10,12.5)")
+    parser.add_argument("--force", action="store_true", help="Cào lại toàn bộ các chap")
     args = parser.parse_args()
+
+    fix_nums = []
+    if args.fix_chapters.strip():
+        for x in args.fix_chapters.split(','):
+            x = x.strip()
+            if x:
+                try:
+                    fix_nums.append(float(x))
+                except ValueError:
+                    pass
+
     run_sync(
         single_comic_url=args.comic_url.strip(),
         mode=args.mode,
         max_chapters=max(1, args.max_chapters),
+        fix_chapters=fix_nums if fix_nums else None,
+        force=args.force,
     )
