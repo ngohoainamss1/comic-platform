@@ -1348,7 +1348,7 @@ export function App() {
                     )}
                   </h2>
 
-                  {(activeQuery || authorFilter || incGenres.length > 0 || excGenres.length > 0) && (
+                  {(activeQuery || authorFilter || incGenres.length > 0 || excGenres.length > 0 || statusFilter !== 'all') && (
                     <button
                       onClick={() => {
                         setActiveQuery('');
@@ -1356,17 +1356,18 @@ export function App() {
                         setAuthorFilter('');
                         setIncGenres([]);
                         setExcGenres([]);
+                        setStatusFilter('all');
                         setPage(1);
                         navigateTo({
                           view: view === 'ranking' ? 'ranking' : 'browse',
-                          sort,
-                          status: statusFilter,
+                          sort: 'latest',
+                          status: 'all',
                           page: 1,
                         });
                       }}
-                      className="px-2.5 py-1 rounded-md bg-lav-500/20 text-txt-focus text-xs font-semibold"
+                      className="px-2.5 py-1.5 rounded-lg bg-lav-500/20 hover:bg-lav-500/30 text-txt-focus text-xs font-bold transition flex items-center gap-1 shadow"
                     >
-                      Xóa lọc
+                      🔄 Xóa bộ lọc thông minh
                     </button>
                   )}
                 </div>
