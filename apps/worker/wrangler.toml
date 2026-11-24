@@ -4,7 +4,6 @@ compatibility_date = "2024-11-01"
 account_id = "3f15c74299bb093bf4873dedc589e9b1"
 
 [vars]
-TURSO_DATABASE_URL = "libsql://comic-db-ngohoainamss1.aws-ap-southeast-1.turso.io"
 
 GH_WORKFLOW_REPO = "ngohoainamss1/comic-platform"
 ENVIRONMENT = "production"
