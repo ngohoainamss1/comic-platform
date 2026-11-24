@@ -98,7 +98,13 @@ export function triggerSmartRedirect(
   writeGuard(guard);
 
   const goUrl = getSpotlightGoUrl(picked.code, refSlug);
-  window.open(goUrl, '_blank', 'noopener,noreferrer');
+  const a = document.createElement('a');
+  a.href = goUrl;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   return true;
 }
 
