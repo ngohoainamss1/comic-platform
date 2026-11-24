@@ -121,6 +121,10 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
       `INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_trigger_chance', '40')`
     ];
 
+    statements.push(`CREATE INDEX IF NOT EXISTS idx_spotlight_campaigns_active 
+        ON spotlight_campaigns(is_active, placement, priority DESC);
+      CREATE INDEX IF NOT EXISTS idx_spotlight_clicks_campaign_date 
+        ON spotlight_clicks(campaign_id, created_at DESC);`);
     await db.batch(statements, 'write');
     migrated = true;
   } catch (err) {

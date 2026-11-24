@@ -1084,9 +1084,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                         required
                         type="url"
                         value={editingSpotlight.target_url || ''}
-                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, target_url: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          let platform = editingSpotlight.platform || 'shopee';
+                          let title = editingSpotlight.title || '';
+                          if (/shopee/i.test(val)) {
+                            platform = 'shopee';
+                            if (!title || title === 'Shopee Deal' || title === 'TikTok Shop Deal') title = 'Shopee Deal';
+                          } else if (/tiktok/i.test(val)) {
+                            platform = 'tiktok';
+                            if (!title || title === 'Shopee Deal' || title === 'TikTok Shop Deal') title = 'TikTok Shop Deal';
+                          }
+                          setEditingSpotlight({ ...editingSpotlight, target_url: val, platform, title });
+                        }}
                         className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
-                        placeholder="https://s.shopee.vn/..."
+                        placeholder="https://s.shopee.vn/... hoặc https://vt.tiktok.com/..."
                       />
                     </div>
                     <div>

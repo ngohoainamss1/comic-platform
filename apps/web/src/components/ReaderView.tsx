@@ -1,3 +1,5 @@
+import { pickWeightedCampaign } from '../lib/spotlight';
+import { getSpotlightGoUrl } from '../lib/api';
 import type { SpotlightCampaign } from '../lib/api';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -51,6 +53,11 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onTriggerAffiliate,
 }) => {
   const totalPages = data.pages.length;
+
+  const endCampaign = React.useMemo(
+    () => pickWeightedCampaign(spotlights || [], 'reader_end'),
+    [spotlights, data.chapter.id]
+  );
 
   const isWebtoonStrip = React.useMemo(() => {
     if (totalPages === 0) return true;
@@ -431,6 +438,41 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                   Hết Chương {data.chapter.chapter_number}
                   {data.chapter.title ? ` — ${data.chapter.title}` : ''}
                 </p>
+                {endCampaign && (
+                  <a
+                    href={getSpotlightGoUrl(endCampaign.code, data.chapter.comic_slug)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block rounded-xl bg-[#171822] border border-lav-500/40 hover:border-lav-500 p-3 transition text-left shadow-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={endCampaign.image_url}
+                        alt={endCampaign.title}
+                        className="w-14 h-14 rounded-lg object-cover shrink-0 bg-bgc-layer2 border border-white/10"
+                      />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${endCampaign.platform === 'shopee' ? 'bg-[#ee4d2d] text-white' : 'bg-[#ff0050] text-white'}`}>
+                            {endCampaign.platform === 'shopee' ? 'Shopee Deal' : 'TikTok Shop'}
+                          </span>
+                          <span className="text-[10px] text-zinc-400">Ủng hộ nhóm dịch</span>
+                        </div>
+                        <p className="text-xs font-bold text-white truncate group-hover:text-lav-300">
+                          {endCampaign.title}
+                        </p>
+                        {endCampaign.subtitle && (
+                          <p className="text-[11px] text-amber-400 font-medium truncate">
+                            {endCampaign.subtitle}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 px-3 py-1.5 rounded-lg bg-gradient-to-r from-lav-500 to-mag-500 text-white text-xs font-bold shadow">
+                        {endCampaign.cta_text || 'Săn Ngay'}
+                      </span>
+                    </div>
+                  </a>
+                )}
                 <div className="flex items-center gap-3">
                   <button
                     disabled={!data.prev_chapter}
