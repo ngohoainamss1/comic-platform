@@ -247,7 +247,7 @@ const HISTORY_KEY = 'vr_history_v2';
 const ADMIN_TOKEN_KEY = 'vr_admin_token';
 
 export function resolveAssetUrl(pathOrUrl: string): string {
-  if (!pathOrUrl) return '';
+  if (!pathOrUrl) return 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300';
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
   return `${API_BASE}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
 }

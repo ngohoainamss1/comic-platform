@@ -1751,6 +1751,9 @@ export function App() {
                     <img
                       src={resolveAssetUrl(h.cover_url)}
                       alt={h.title}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300';
+                      }}
                       className="w-14 h-20 rounded object-cover bg-bgc-layer2 shrink-0"
                     />
                     <div className="flex-1 min-w-0 space-y-1">
