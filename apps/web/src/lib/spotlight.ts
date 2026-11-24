@@ -67,20 +67,22 @@ export function triggerSmartRedirect(
   const guard = readGuard();
   guard.sessionActions += 1;
 
-  if (guard.sessionActions <= 1) {
-    writeGuard(guard);
-    return false;
-  }
+  if (cooldownHours > 0) {
+    if (guard.sessionActions <= 1) {
+      writeGuard(guard);
+      return false;
+    }
 
-  if (guard.dayCount >= dailyCap) {
-    writeGuard(guard);
-    return false;
-  }
+    if (guard.dayCount >= dailyCap) {
+      writeGuard(guard);
+      return false;
+    }
 
-  const now = Date.now();
-  if (cooldownHours > 0 && guard.lastPopAt > 0 && now - guard.lastPopAt < cooldownHours * 3600 * 1000) {
-    writeGuard(guard);
-    return false;
+    const now = Date.now();
+    if (guard.lastPopAt > 0 && now - guard.lastPopAt < cooldownHours * 3600 * 1000) {
+      writeGuard(guard);
+      return false;
+    }
   }
 
   if (Math.random() * 100 > triggerChance) {
@@ -91,7 +93,7 @@ export function triggerSmartRedirect(
   const picked = pickRandomAffiliate(campaigns);
   if (!picked) return false;
 
-  guard.lastPopAt = now;
+  guard.lastPopAt = Date.now();
   guard.dayCount += 1;
   writeGuard(guard);
 
