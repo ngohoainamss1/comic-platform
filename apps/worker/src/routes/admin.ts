@@ -502,7 +502,8 @@ adminRoutes.post('/crawler/trigger', async (c) => {
   try {
     const body = (await c.req.json().catch(() => ({}))) as { comic_url?: string };
     const ghToken = (c.env.GH_TOKEN || '').trim();
-    const ghRepo = (c.env.GH_WORKFLOW_REPO || '').trim();
+    let ghRepo = (c.env.GH_WORKFLOW_REPO || '').trim();
+    ghRepo = ghRepo.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
     if (!ghToken || !ghRepo) {
       return c.json({ success: false, message: 'Thiếu GH_TOKEN hoặc GH_WORKFLOW_REPO trong Cloudflare Worker.' }, 400);
     }
