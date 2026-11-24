@@ -1512,12 +1512,19 @@ export function App() {
                         </h3>
                         <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
                           <span
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
+                            triggerSmartRedirect(spotlights, settings, comic.slug);
                             if (comic.latest_chapter_id) {
-                              triggerSmartRedirect(spotlights, settings, comic.slug);
                               openChapter(comic.latest_chapter_id);
                             } else {
+                              try {
+                                const detail = await fetchComicDetail(comic.slug);
+                                if (detail.chapters && detail.chapters.length > 0) {
+                                  openChapter(detail.chapters[0].id);
+                                  return;
+                                }
+                              } catch {}
                               openComicDetail(comic.slug);
                             }
                           }}

@@ -155,6 +155,7 @@ apiRoutes.get('/comics', async (c) => {
           views_total: Number(row.views_total || 0),
           rating_avg: Number(row.rating_avg || 5.0),
           latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+      latest_chapter_id: row.latest_chapter_id !== null && row.latest_chapter_id !== undefined ? Number(row.latest_chapter_id) : null,
           updated_at: String(row.updated_at),
         };
       })
@@ -240,6 +241,7 @@ apiRoutes.get('/comics/:slug', async (c) => {
               views_total: Number(row.views_total || 0),
               rating_avg: Number(row.rating_avg || 5.0),
               latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+      latest_chapter_id: row.latest_chapter_id !== null && row.latest_chapter_id !== undefined ? Number(row.latest_chapter_id) : null,
               updated_at: String(row.updated_at),
             };
           })
@@ -445,7 +447,8 @@ apiRoutes.get('/leaderboard/:category', async (c) => {
       const listRes = await db.execute({
         sql: `
           SELECT id, slug, title, cover_file_id, cover_gh_path, status, ${viewCol} AS views, likes_count,
-                 (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = comics.id) AS latest_chapter
+                 (SELECT MAX(ch.chapter_number) FROM chapters ch WHERE ch.comic_id = comics.id) AS latest_chapter,
+               (SELECT ch.id FROM chapters ch WHERE ch.comic_id = comics.id ORDER BY ch.chapter_number DESC LIMIT 1) AS latest_chapter_id
           FROM comics
           WHERE COALESCE(is_hidden, 0) = 0
           ORDER BY ${viewCol} DESC, likes_count DESC, updated_at DESC
@@ -467,6 +470,7 @@ apiRoutes.get('/leaderboard/:category', async (c) => {
             likes_count: Number(row.likes_count || 0),
             status: String(row.status),
             latest_chapter: row.latest_chapter !== null ? Number(row.latest_chapter) : null,
+      latest_chapter_id: row.latest_chapter_id !== null && row.latest_chapter_id !== undefined ? Number(row.latest_chapter_id) : null,
           };
         })
       );
