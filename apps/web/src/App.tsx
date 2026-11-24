@@ -1,3 +1,6 @@
+import { PartnerSlot } from './components/PartnerSlot';
+import { fetchSpotlights, type SpotlightCampaign } from './lib/api';
+import { triggerSmartRedirect } from './lib/spotlight';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
@@ -99,6 +102,7 @@ function formatRelTime(iso: string): string {
 }
 
 export function App() {
+  const [spotlights, setSpotlights] = useState<SpotlightCampaign[]>([]);
   const initRoute = useMemo(() => parseRouteFromLocation(), []);
   const [view, setView] = useState<ViewMode>(initRoute.view);
   const [libraryTab, setLibraryTab] = useState<'bookmarks' | 'history'>(initRoute.libraryTab || 'bookmarks');
@@ -112,6 +116,8 @@ export function App() {
     announcement_text: '',
     maintenance_mode: '0',
   });
+  const settings = publicSettings;
+  const setSettings = setPublicSettings;
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Dữ liệu chung
@@ -350,6 +356,7 @@ export function App() {
   }, [view, page, activeQuery, sort, statusFilter, authorFilter, incGenres, excGenres]);
 
   const openComicDetail = async (slug: string) => {
+    triggerSmartRedirect(spotlights, settings, slug);
     navigateTo({ view: 'detail', slug });
     setDetailLoading(true);
     setChapterSearch('');
@@ -400,6 +407,7 @@ export function App() {
   };
 
   const openChapter = async (chapterId: number, options?: { replace?: boolean }) => {
+    triggerSmartRedirect(spotlights, settings, selectedComic?.slug || 'chapter');
     try {
       const payload = await fetchChapterPages(chapterId);
       setReaderData(payload);
@@ -520,6 +528,8 @@ export function App() {
     return (
       <ReaderView
         data={readerData}
+        spotlights={spotlights}
+        onTriggerAffiliate={() => triggerSmartRedirect(spotlights, settings, readerData.chapter.comic_slug)}
         onBack={() => {
           setHistoryList(getHistory());
           if (window.history.length > 1 && window.history.state?.fromApp) {
@@ -2052,6 +2062,9 @@ export function App() {
                   </div>
                 )}
 
+                {spotlights.length > 0 && selectedComic && (
+                  <PartnerSlot campaigns={spotlights} placement="detail_cta" refSlug={selectedComic.slug} />
+                )}
                 {/* CÓ THỂ BẠN SẼ THÍCH */}
                 <div className="mt-8 space-y-4">
                   <h2 className="text-txt-primary text-lg sm:text-xl font-semibold uppercase flex items-center gap-2 border-l-4 border-mag-500 pl-3">
@@ -2353,6 +2366,7 @@ export function App() {
       )}
 
       {/* Auth Modal */}
+      {spotlights.length > 0 && <PartnerSlot campaigns={spotlights} placement="sticky_bar" refSlug={selectedComic?.slug || 'global'} />}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

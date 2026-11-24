@@ -18,7 +18,9 @@ import {
   RefreshCw,
   Save,
   Search,
-  Settings,
+  ExternalLink,
+  Settings as SettingsTabIcon,
+  
   Shield,
   Tags,
   Trash2,
@@ -30,6 +32,7 @@ import {
   type AdminComicRow,
   type AdminJobRow,
   type AdminReportRow,
+  type AdminSpotlightRow,
   type AdminSourceRow,
   type AdminStats,
   type AdminWatchlistRow,
@@ -38,6 +41,8 @@ import {
   getAdminToken,
   type PageItem,
   type PublicSettings,
+  
+  
   resolveAssetUrl,
   setAdminToken,
 } from '../lib/api';
@@ -47,7 +52,7 @@ interface AdminPanelProps {
   onSettingsUpdated?: () => void;
 }
 
-type AdminTab = 'dashboard' | 'comics' | 'genres' | 'crawler' | 'reports' | 'settings';
+type AdminTab = 'dashboard' | 'comics' | 'genres' | 'crawler' | 'reports' | 'spotlights' | 'settings';
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdated }) => {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getAdminToken()));
@@ -91,6 +96,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
 
   // Reports
   const [reports, setReports] = useState<AdminReportRow[]>([]);
+
+  // Spotlights
+  const [spotlightRows, setSpotlightRows] = useState<AdminSpotlightRow[]>([]);
+  const [editingSpotlight, setEditingSpotlight] = useState<Partial<AdminSpotlightRow> | null>(null);
 
   // Settings
   const [settings, setSettings] = useState<PublicSettings>({
@@ -144,6 +153,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
         setSources(sRes);
         setWatchlists(wRes);
         setJobs(jRes);
+      } else if (tab === 'spotlights') {
+        setSpotlightRows(await adminApi.getSpotlights());
       } else if (tab === 'reports') {
         setReports(await adminApi.getReports());
       } else if (tab === 'settings') {
@@ -251,8 +262,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
     { id: 'comics', label: 'Truyện & Ảnh', icon: <BookMarked className="w-4 h-4" /> },
     { id: 'genres', label: 'Thể loại', icon: <Tags className="w-4 h-4" /> },
     { id: 'crawler', label: 'Crawler & Jobs', icon: <Bot className="w-4 h-4" /> },
+    { id: 'spotlights', label: 'Affiliate & Deal', icon: <ExternalLink className="w-4 h-4" /> },
     { id: 'reports', label: 'Báo lỗi', icon: <AlertTriangle className="w-4 h-4" /> },
-    { id: 'settings', label: 'Cấu hình Web', icon: <Settings className="w-4 h-4" /> },
+    { id: 'settings', label: 'Cấu hình Web', icon: <SettingsTabIcon className="w-4 h-4" /> },
   ];
 
   return (
@@ -911,6 +923,261 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
           </div>
         )}
 
+        
+        {/* TAB: SPOTLIGHTS */}
+        {tab === 'spotlights' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base text-white">Quản lý Affiliate & Spotlight Deals</h3>
+              <button
+                onClick={() => setEditingSpotlight({ platform: 'shopee', placement: 'reader_end', priority: 10, trigger_page: 4, cooldown_hours: 12, is_active: 1 })}
+                className="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-xs font-bold text-white flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Thêm chiến dịch
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-[#111118] border border-white/10 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-white/5 text-zinc-400 uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3">Tiêu đề & Code</th>
+                    <th className="p-3">Nền tảng</th>
+                    <th className="p-3">Vị trí</th>
+                    <th className="p-3">Ưu tiên</th>
+                    <th className="p-3">Clicks (24h / Tổng)</th>
+                    <th className="p-3">Trạng thái</th>
+                    <th className="p-3 text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {spotlightRows.map((s) => (
+                    <tr key={s.id} className="hover:bg-white/5">
+                      <td className="p-3 space-y-0.5">
+                        <p className="font-bold text-white line-clamp-1">{s.title}</p>
+                        <p className="text-[11px] text-zinc-400 font-mono">code: {s.code}</p>
+                      </td>
+                      <td className="p-3 uppercase font-bold text-amber-400">{s.platform}</td>
+                      <td className="p-3 text-zinc-300">{s.placement}</td>
+                      <td className="p-3 text-zinc-300">{s.priority}</td>
+                      <td className="p-3 font-semibold text-emerald-400">
+                        {s.clicks_24h || 0} / <span className="text-zinc-300">{s.clicks_total || 0}</span>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={async () => {
+                            await adminApi.updateSpotlight(s.id, { is_active: s.is_active ? 0 : 1 });
+                            setSpotlightRows(await adminApi.getSpotlights());
+                            showToast('Đã đổi trạng thái');
+                          }}
+                          className={`px-2 py-1 rounded text-[10px] font-bold ${s.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-500/20 text-zinc-400'}`}
+                        >
+                          {s.is_active ? 'Đang chạy' : 'Đã tạm dừng'}
+                        </button>
+                      </td>
+                      <td className="p-3 text-right space-x-2">
+                        <button
+                          onClick={() => window.open(`/go/${encodeURIComponent(s.code)}?ref=admin-test`, '_blank')}
+                          className="px-2 py-1 rounded bg-sky-500/20 text-sky-300 font-bold"
+                        >
+                          Test Link
+                        </button>
+                        <button
+                          onClick={() => setEditingSpotlight(s)}
+                          className="px-2 py-1 rounded bg-white/10 text-white font-bold"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Xóa chiến dịch "${s.title}"?`)) return;
+                            await adminApi.deleteSpotlight(s.id);
+                            setSpotlightRows((prev) => prev.filter((x) => x.id !== s.id));
+                            showToast('Đã xóa chiến dịch');
+                          }}
+                          className="px-2 py-1 rounded bg-rose-500/20 text-rose-300 font-bold"
+                        >
+                          Xóa
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {editingSpotlight && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                <div className="w-full max-w-lg rounded-3xl bg-[#12121a] border border-white/10 p-5 space-y-4 my-8">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black text-base text-white">
+                      {editingSpotlight.id ? 'Sửa chiến dịch Affiliate' : 'Thêm chiến dịch Affiliate mới'}
+                    </h3>
+                    <button onClick={() => setEditingSpotlight(null)} className="text-zinc-400 hover:text-white">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      try {
+                        if (editingSpotlight.id) {
+                          await adminApi.updateSpotlight(editingSpotlight.id, editingSpotlight);
+                          showToast('Đã cập nhật chiến dịch');
+                        } else {
+                          await adminApi.createSpotlight(editingSpotlight);
+                          showToast('Đã tạo chiến dịch mới');
+                        }
+                        setEditingSpotlight(null);
+                        setSpotlightRows(await adminApi.getSpotlights());
+                      } catch (err) {
+                        showToast((err as Error).message, 'err');
+                      }
+                    }}
+                    className="space-y-3 text-xs"
+                  >
+                    <div>
+                      <label className="text-zinc-400 font-bold block mb-1">Tiêu đề chiến dịch</label>
+                      <input
+                        required
+                        value={editingSpotlight.title || ''}
+                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, title: e.target.value })}
+                        className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        placeholder="Ví dụ: Sale Siêu Hội Shopee 12.12"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Mã Code (slug duy nhất)</label>
+                        <input
+                          value={editingSpotlight.code || ''}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, code: e.target.value })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white font-mono"
+                          placeholder="shopee-1212"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Nền tảng</label>
+                        <select
+                          value={editingSpotlight.platform || 'shopee'}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, platform: e.target.value as any })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        >
+                          <option value="shopee">Shopee</option>
+                          <option value="tiktok">TikTok Shop</option>
+                          <option value="other">Khác</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 font-bold block mb-1">Link Affiliate đích (Target URL)</label>
+                      <input
+                        required
+                        type="url"
+                        value={editingSpotlight.target_url || ''}
+                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, target_url: e.target.value })}
+                        className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        placeholder="https://s.shopee.vn/..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 font-bold block mb-1">Link Ảnh Banner (Image URL)</label>
+                      <input
+                        required
+                        type="url"
+                        value={editingSpotlight.image_url || ''}
+                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, image_url: e.target.value })}
+                        className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Vị trí hiển thị (Placement)</label>
+                        <select
+                          value={editingSpotlight.placement || 'reader_end'}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, placement: e.target.value as any })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        >
+                          <option value="home_native">Trang chủ (Native Card)</option>
+                          <option value="detail_cta">Trang chi tiết truyện</option>
+                          <option value="reader_mid">Giữa chương đọc</option>
+                          <option value="reader_end">Cuối chương đọc</option>
+                          <option value="sticky_bar">Thanh dính đáy màn hình</option>
+                          <option value="gesture_pop">Popup chuyển chap (Smart Redirect)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Badge Text</label>
+                        <input
+                          value={editingSpotlight.badge_text || ''}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, badge_text: e.target.value })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                          placeholder="HOT / SALE"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Độ ưu tiên</label>
+                        <input
+                          type="number"
+                          value={editingSpotlight.priority ?? 10}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, priority: Number(e.target.value) })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Trigger Trang (mid)</label>
+                        <input
+                          type="number"
+                          value={editingSpotlight.trigger_page ?? 4}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, trigger_page: Number(e.target.value) })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-zinc-400 font-bold block mb-1">Cooldown (Giờ)</label>
+                        <input
+                          type="number"
+                          value={editingSpotlight.cooldown_hours ?? 12}
+                          onChange={(e) => setEditingSpotlight({ ...editingSpotlight, cooldown_hours: Number(e.target.value) })}
+                          className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 font-bold block mb-1">Phụ đề (Subtitle / Khuyến mại)</label>
+                      <input
+                        value={editingSpotlight.subtitle || ''}
+                        onChange={(e) => setEditingSpotlight({ ...editingSpotlight, subtitle: e.target.value })}
+                        className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-white"
+                        placeholder="Giảm 50K đơn 99K"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingSpotlight(null)}
+                        className="px-4 py-2 rounded-xl bg-white/10 text-white font-bold"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold"
+                      >
+                        Lưu chiến dịch
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+
         {/* TAB 6: SETTINGS */}
         {tab === 'settings' && (
           <form
@@ -971,6 +1238,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                 className="accent-amber-500 w-4 h-4"
               />
             </label>
+
+            <div className="pt-3 border-t border-white/10 space-y-3">
+              <p className="text-xs font-extrabold uppercase text-rose-400">Cấu hình tần suất chuyển hướng Affiliate</p>
+              <label className="flex items-center justify-between text-xs font-bold text-zinc-300 cursor-pointer">
+                <span>Bật tự mở tab Shopee/TikTok khi chuyển chap</span>
+                <input
+                  type="checkbox"
+                  checked={settings.aff_smart_redirect_enabled !== '0'}
+                  onChange={(e) =>
+                    setSettings({ ...settings, aff_smart_redirect_enabled: e.target.checked ? '1' : '0' })
+                  }
+                  className="accent-rose-500 w-4 h-4"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-zinc-400 block mb-1">Thời gian nghỉ (Giờ / lần)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={48}
+                    value={settings.aff_cooldown_hours || '6'}
+                    onChange={(e) => setSettings({ ...settings, aff_cooldown_hours: e.target.value })}
+                    className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-zinc-400 block mb-1">Giới hạn tối đa (Lần / 24h)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={settings.aff_daily_cap || '2'}
+                    onChange={(e) => setSettings({ ...settings, aff_daily_cap: e.target.value })}
+                    className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
+                  />
+                </div>
+              </div>
+            </div>
 
             <button className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-xs font-bold text-white flex items-center gap-1.5">
               <Save className="w-4 h-4" /> Lưu cấu hình

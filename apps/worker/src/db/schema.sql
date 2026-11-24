@@ -214,3 +214,33 @@ CREATE TABLE IF NOT EXISTS comment_likes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(comic_id, chapter_id, parent_id, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS spotlight_campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL DEFAULT 'shopee',
+  placement TEXT NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT DEFAULT '',
+  cta_text TEXT DEFAULT 'Săn Deal Ngay',
+  image_url TEXT NOT NULL,
+  target_url TEXT NOT NULL,
+  badge_text TEXT DEFAULT 'HOT',
+  priority INTEGER DEFAULT 10,
+  trigger_page INTEGER DEFAULT 4,
+  cooldown_hours INTEGER DEFAULT 12,
+  is_active INTEGER DEFAULT 1,
+  clicks_total INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS spotlight_clicks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL,
+  placement TEXT NOT NULL,
+  ref_slug TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (campaign_id) REFERENCES spotlight_campaigns(id) ON DELETE CASCADE
+);

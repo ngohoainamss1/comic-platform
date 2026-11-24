@@ -493,6 +493,44 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
     await db.execute(`INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES ($"yaoi-\u0111am-m\u1ef9", $"Yaoi \u00b7 \u0110am M\u1ef9", $"Quan h\u1ec7 gi\u1eefa hai nam; c\u00f3 th\u1ec3 l\u00e3ng m\u1ea1n/\u0111am m\u1ef9, ph\u1ed5 bi\u1ebfn trong c\u1ed9ng \u0111\u1ed3ng BL.", $0)`);
     await db.execute(`INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES ($"yuri-b\u00e1ch-h\u1ee3p", $"Yuri \u00b7 B\u00e1ch H\u1ee3p", $"Quan h\u1ec7 gi\u1eefa hai n\u1eef; nh\u1ea5n m\u1ea1nh s\u1ef1 l\u00e3ng m\u1ea1n/g\u1ee3i c\u1ea3m, nh\u1eb9 nh\u00e0ng ho\u1eb7c m\u00e3nh li\u1ec7t.", $0)`);
     await db.execute(`INSERT OR REPLACE INTO genres (slug, name, description, comic_count) VALUES ($"zombie-x\u00e1c-s\u1ed1ng", $"Zombie \u00b7 X\u00e1c S\u1ed1ng", $"X\u00e1c s\u1ed1ng xu\u1ea5t hi\u1ec7n trong b\u1ed1i c\u1ea3nh kinh d\u1ecb, xen y\u1ebfu t\u1ed1 t\u00ecnh d\u1ee5c k\u1ef3 qu\u00e1i ho\u1eb7c \u0111en t\u1ed1i.", $0)`);
+    
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS spotlight_campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        platform TEXT NOT NULL DEFAULT 'shopee',
+        placement TEXT NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        cta_text TEXT DEFAULT 'Săn Deal Ngay',
+        image_url TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        badge_text TEXT DEFAULT 'HOT',
+        priority INTEGER DEFAULT 10,
+        trigger_page INTEGER DEFAULT 4,
+        cooldown_hours INTEGER DEFAULT 12,
+        is_active INTEGER DEFAULT 1,
+        clicks_total INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS spotlight_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER NOT NULL,
+        placement TEXT NOT NULL,
+        ref_slug TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (campaign_id) REFERENCES spotlight_campaigns(id) ON DELETE CASCADE
+      )
+    `);
+
+    await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_smart_redirect_enabled', '1')`);
+    await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_cooldown_hours', '6')`);
+    await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_daily_cap', '2')`);
+
     migrated = true;
     
     

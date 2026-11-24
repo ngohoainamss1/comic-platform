@@ -580,7 +580,7 @@ adminRoutes.get('/settings', async (c) => {
 adminRoutes.put('/settings', async (c) => {
   try {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, string>;
-    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode'];
+    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap'];
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     for (const k of allowedKeys) {
@@ -594,5 +594,104 @@ adminRoutes.put('/settings', async (c) => {
     return c.json({ success: true, message: 'Đã lưu cấu hình trang web.' });
   } catch {
     return c.json({ success: false, message: 'Lỗi lưu cấu hình.' }, 500);
+  }
+});
+
+// ==================== SPOTLIGHT (AFFILIATE) ====================
+adminRoutes.get('/spotlights', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+    const res = await db.execute(`
+      SELECT s.*,
+        (SELECT COUNT(*) FROM spotlight_clicks sc WHERE sc.campaign_id = s.id AND sc.created_at >= datetime('now', '-1 day')) AS clicks_24h
+      FROM spotlight_campaigns s
+      ORDER BY s.is_active DESC, s.placement ASC, s.priority DESC, s.id DESC
+    `);
+    return c.json({ success: true, data: res.rows });
+  } catch {
+    return c.json({ success: false, message: 'Không thể tải danh sách chiến dịch.' }, 500);
+  }
+});
+
+adminRoutes.post('/spotlights', async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const title = String(body.title || '').trim();
+    const targetUrl = String(body.target_url || '').trim();
+    const imageUrl = String(body.image_url || '').trim();
+    const placement = String(body.placement || 'reader_end').trim();
+    const platform = String(body.platform || 'shopee').trim();
+
+    if (!title || !targetUrl || !imageUrl) {
+      return c.json({ success: false, message: 'Vui lòng nhập đủ Tiêu đề, Ảnh và Link Affiliate.' }, 400);
+    }
+
+    const rawCode = String(body.code || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+    const code = rawCode || `${platform.slice(0, 2)}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+    await db.execute({
+      sql: `INSERT INTO spotlight_campaigns
+            (code, platform, placement, title, subtitle, cta_text, image_url, target_url, badge_text, priority, trigger_page, cooldown_hours, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        code,
+        platform,
+        placement,
+        title,
+        String(body.subtitle || '').trim(),
+        String(body.cta_text || 'Săn Deal Ngay').trim(),
+        imageUrl,
+        targetUrl,
+        String(body.badge_text || 'HOT').trim(),
+        Number(body.priority || 10),
+        Math.max(1, Number(body.trigger_page || 4)),
+        Math.max(1, Number(body.cooldown_hours || 12)),
+        body.is_active === 0 ? 0 : 1,
+      ],
+    });
+    return c.json({ success: true, message: 'Đã tạo chiến dịch mới.' });
+  } catch (err) {
+    return c.json({ success: false, message: (err as Error).message || 'Lỗi tạo chiến dịch.' }, 500);
+  }
+});
+
+adminRoutes.patch('/spotlights/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const fields: string[] = [];
+    const args: any[] = [];
+
+    const allowed = ['platform', 'placement', 'title', 'subtitle', 'cta_text', 'image_url', 'target_url', 'badge_text', 'priority', 'trigger_page', 'cooldown_hours', 'is_active'];
+    for (const k of allowed) {
+      if (body[k] !== undefined) {
+        fields.push(`${k} = ?`);
+        args.push(body[k]);
+      }
+    }
+    if (fields.length === 0) return c.json({ success: false, message: 'Không có dữ liệu cập nhật.' }, 400);
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    args.push(id);
+
+    const db = getDb(c.env);
+    await db.execute({ sql: `UPDATE spotlight_campaigns SET ${fields.join(', ')} WHERE id = ?`, args });
+    return c.json({ success: true, message: 'Đã cập nhật chiến dịch.' });
+  } catch {
+    return c.json({ success: false, message: 'Lỗi cập nhật chiến dịch.' }, 500);
+  }
+});
+
+adminRoutes.delete('/spotlights/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    await db.execute({ sql: 'DELETE FROM spotlight_campaigns WHERE id = ?', args: [id] });
+    return c.json({ success: true, message: 'Đã xóa chiến dịch.' });
+  } catch {
+    return c.json({ success: false, message: 'Lỗi xóa chiến dịch.' }, 500);
   }
 });

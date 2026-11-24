@@ -1,3 +1,35 @@
+
+export type SpotlightPlatform = 'shopee' | 'tiktok' | 'other';
+export type SpotlightPlacement =
+  | 'home_native'
+  | 'detail_cta'
+  | 'reader_mid'
+  | 'reader_end'
+  | 'sticky_bar'
+  | 'gesture_pop';
+
+export interface SpotlightCampaign {
+  id: number;
+  code: string;
+  platform: SpotlightPlatform;
+  placement: SpotlightPlacement;
+  title: string;
+  subtitle: string;
+  cta_text: string;
+  image_url: string;
+  badge_text: string;
+  priority: number;
+  trigger_page: number;
+  cooldown_hours: number;
+}
+
+export interface AdminSpotlightRow extends SpotlightCampaign {
+  target_url: string;
+  is_active: number;
+  clicks_total: number;
+  clicks_24h: number;
+  created_at: string;
+}
 const API_BASE = (import.meta.env.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes('localhost')
   ? import.meta.env.VITE_API_BASE_URL
   : 'https://comic-worker.namdzsv08.workers.dev').replace(/\/$/, '');
@@ -104,6 +136,9 @@ export interface PublicSettings {
   announcement_enabled: string;
   announcement_text: string;
   maintenance_mode: string;
+  aff_smart_redirect_enabled?: string;
+  aff_cooldown_hours?: string;
+  aff_daily_cap?: string;
 }
 
 export interface FetchComicsParams {
@@ -492,6 +527,14 @@ export const adminApi = {
   deleteGenre: (id: number) => adminReq<{ message: string }>(`/genres/${id}`, { method: 'DELETE' }),
   mergeGenres: (source_id: number, target_id: number) =>
     adminReq<{ message: string }>('/genres/merge', { method: 'POST', body: JSON.stringify({ source_id, target_id }) }),
+    getSpotlights: async () => (await adminReq<{ data: AdminSpotlightRow[] }>('/spotlights')).data,
+  createSpotlight: (payload: Record<string, unknown>) =>
+    adminReq<{ message: string }>('/spotlights', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSpotlight: (id: number, payload: Record<string, unknown>) =>
+    adminReq<{ message: string }>(`/spotlights/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteSpotlight: (id: number) =>
+    adminReq<{ message: string }>(`/spotlights/${id}`, { method: 'DELETE' }),
+
   getSources: async () => (await adminReq<{ data: AdminSourceRow[] }>('/sources')).data,
   createSource: (payload: { name: string; base_url: string; feed_url: string; adapter_type?: string; is_active?: number }) =>
     adminReq<{ message: string }>('/sources', { method: 'POST', body: JSON.stringify(payload) }),
@@ -749,6 +792,19 @@ export async function fetchRecentComments(limit = 20): Promise<RecentCommentItem
   try {
     const res = await requestJson<{ comments?: RecentCommentItem[] }>(`/api/comments/recent?limit=${limit}&_t=${Date.now()}`);
     return res.comments || [];
+  } catch {
+    return [];
+  }
+}
+
+export function getSpotlightGoUrl(code: string, refSlug = 'home'): string {
+  return `${API_BASE}/go/${encodeURIComponent(code)}?ref=${encodeURIComponent(refSlug)}`;
+}
+
+export async function fetchSpotlights(): Promise<SpotlightCampaign[]> {
+  try {
+    const res = await requestJson<{ data: SpotlightCampaign[] }>('/api/spotlights');
+    return res.data || [];
   } catch {
     return [];
   }

@@ -1,3 +1,5 @@
+import { PartnerSlot } from './PartnerSlot';
+import type { SpotlightCampaign } from '../lib/api';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -27,6 +29,8 @@ interface ReaderViewProps {
   onProgress?: (pageIndex: number, totalPages: number) => void;
   currentUser: UserProfile | null;
   onRequireAuth: () => void;
+  spotlights?: SpotlightCampaign[];
+  onTriggerAffiliate?: () => void;
 }
 
 type ReadTheme = 'oled' | 'dim' | 'warm';
@@ -44,6 +48,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onProgress,
   currentUser,
   onRequireAuth,
+  spotlights,
+  onTriggerAffiliate,
 }) => {
   const totalPages = data.pages.length;
 
@@ -205,7 +211,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         else if (data.prev_chapter) onOpenChapter(data.prev_chapter.id);
       } else if (e.key === 'ArrowRight') {
         if (readMode === 'horizontal') setCurrentPageIdx((p) => Math.min(totalPages - 1, p + 1));
-        else if (data.next_chapter) onOpenChapter(data.next_chapter.id);
+        else if (data.next_chapter) onTriggerAffiliate?.();
+  onOpenChapter(data.next_chapter!.id);
       } else if (e.key === ' ') {
         if (readMode === 'vertical') {
           e.preventDefault();
@@ -229,7 +236,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       }
       if (x > w * 0.72) {
         if (currentPageIdx < totalPages - 1) setCurrentPageIdx((p) => p + 1);
-        else if (data.next_chapter) onOpenChapter(data.next_chapter.id);
+        else if (data.next_chapter) onTriggerAffiliate?.();
+  onOpenChapter(data.next_chapter!.id);
         return;
       }
     }
@@ -395,17 +403,29 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             style={{ width: `${maxWidthPct}%` }}
             className={`max-w-4xl mx-auto flex flex-col items-center ${gapMode ? 'gap-3 px-2' : 'gap-0'}`}
           >
-            {data.pages.map((p, idx) => (
-              <img
-                key={`${data.chapter.id}-${p.index}-${idx}`}
-                data-page-idx={idx}
-                src={resolveAssetUrl(p.url)}
-                alt={`Trang ${idx + 1}`}
-                loading={idx < 3 ? 'eager' : 'lazy'}
-                decoding="async"
-                className="w-full h-auto block select-none bg-zinc-900/40"
-              />
-            ))}
+            {data.pages.map((p, idx) => {
+              const midRule = spotlights?.find((s: SpotlightCampaign) => s.placement === 'reader_mid');
+              const midInsertIdx = midRule ? Math.min(totalPages - 2, Math.max(1, (midRule.trigger_page || 4) - 1)) : 3;
+              return (
+                <React.Fragment key={`${data.chapter.id}-${p.index}-${idx}`}>
+                  <img
+                    data-page-idx={idx}
+                    src={resolveAssetUrl(p.url)}
+                    alt={`Trang ${idx + 1}`}
+                    loading={idx < 3 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    className="w-full h-auto block select-none bg-zinc-900/40"
+                  />
+                  {totalPages >= 5 && idx === midInsertIdx && spotlights && spotlights.length > 0 && (
+                    <PartnerSlot
+                      campaigns={spotlights}
+                      placement="reader_mid"
+                      refSlug={data.chapter.comic_slug}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
 
             {/* Khối chuyển chương cuối trang */}
             <div className="w-full max-w-2xl px-4 py-8 space-y-4">

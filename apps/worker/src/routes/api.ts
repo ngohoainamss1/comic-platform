@@ -12,13 +12,16 @@ apiRoutes.get('/settings/public', async (c) => {
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     const res = await db.execute(
-      "SELECT key, value FROM site_settings WHERE key IN ('site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode')"
+      "SELECT key, value FROM site_settings WHERE key IN ('site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap')"
     );
     const settings: Record<string, string> = {
       site_name: 'VinaReader',
       announcement_enabled: '0',
       announcement_text: '',
       maintenance_mode: '0',
+      aff_smart_redirect_enabled: '1',
+      aff_cooldown_hours: '6',
+      aff_daily_cap: '2',
     };
     for (const row of res.rows) {
       settings[String(row.key)] = String(row.value ?? '');
@@ -605,5 +608,23 @@ apiRoutes.get('/leaderboard/:category', async (c) => {
     return c.json({ success: true, data: { category, period, items: [], pagination: { page: 1, limit: 30, total: 0, totalPages: 1, startRank: 1 } } });
   } catch {
     return c.json({ success: false, message: 'Không thể tải bảng xếp hạng.' }, 500);
+  }
+});
+
+apiRoutes.get('/spotlights', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureSchemaMigrated(db);
+    const res = await db.execute(`
+      SELECT id, code, platform, placement, title, subtitle, cta_text,
+             image_url, badge_text, priority, trigger_page, cooldown_hours
+      FROM spotlight_campaigns
+      WHERE is_active = 1
+      ORDER BY priority DESC, id DESC
+    `);
+    c.header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+    return c.json({ success: true, data: res.rows });
+  } catch {
+    return c.json({ success: true, data: [] });
   }
 });

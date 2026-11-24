@@ -5,6 +5,7 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { apiRoutes } from './routes/api';
 import { adminRoutes } from './routes/admin';
 import { imageProxyRoutes } from './routes/imageProxy';
+import { spotlightRedirectRoutes } from './routes/spotlight';
 import { authRoutes } from './routes/auth';
 import { commentsRoutes } from './routes/comments';
 
@@ -28,6 +29,7 @@ app.route('/api/auth', authRoutes);
 app.route('/api/comments', commentsRoutes);
 app.route('/api', apiRoutes);
 app.route('/img', imageProxyRoutes);
+app.route('/go', spotlightRedirectRoutes);
 
 app.notFound((c) => c.json({ success: false, message: 'Đường dẫn không tồn tại.' }, 404));
 
