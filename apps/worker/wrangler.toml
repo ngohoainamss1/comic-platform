@@ -4,6 +4,9 @@ compatibility_date = "2024-11-01"
 account_id = "3f15c74299bb093bf4873dedc589e9b1"
 
 [vars]
+TURSO_DATABASE_URL = "libsql://comic-db-ngohoainamss1.aws-ap-southeast-1.turso.io"
+TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTUwMjUyNTIsImlkIjoiMDFhMWVmZDctNWQwMS03Nzg0LTg0ZWEtYzg3NjUxNDM5M2JhIiwia2lkIjoiUVRRcXJTblhDbWZtZUlxOUhWVjBEamc3OWlFd1RkN2VhcGtKVWRsN2laTSIsInJpZCI6ImE4OTdlMzQ1LTRkOTctNDUwOC05ZTNlLTllMzE0MmFlMDMwZCJ9.3D8GF5owsXvIKF0E3D8U_yc6XX74PMcQc7sQZPJceXYamMTLwowpO5-u64T47pFGbLgSYBBKmq9jANPGVElXCA"
+
 GH_WORKFLOW_REPO = "ngohoainamss1/comic-platform"
 ENVIRONMENT = "production"
 IMAGE_TOKEN_TTL_SECONDS = "900"
