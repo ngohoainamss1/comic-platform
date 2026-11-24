@@ -530,6 +530,7 @@ export async function ensureSchemaMigrated(db: Client): Promise<void> {
     await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_smart_redirect_enabled', '1')`);
     await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_cooldown_hours', '6')`);
     await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_daily_cap', '2')`);
+    await db.execute(`INSERT OR IGNORE INTO site_settings (key, value) VALUES ('aff_trigger_chance', '40')`);
 
     migrated = true;
     

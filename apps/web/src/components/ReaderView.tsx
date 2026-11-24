@@ -211,8 +211,10 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         else if (data.prev_chapter) onOpenChapter(data.prev_chapter.id);
       } else if (e.key === 'ArrowRight') {
         if (readMode === 'horizontal') setCurrentPageIdx((p) => Math.min(totalPages - 1, p + 1));
-        else if (data.next_chapter) onTriggerAffiliate?.();
-  onOpenChapter(data.next_chapter!.id);
+        else if (data.next_chapter) {
+          onTriggerAffiliate?.();
+          onOpenChapter(data.next_chapter!.id);
+        }
       } else if (e.key === ' ') {
         if (readMode === 'vertical') {
           e.preventDefault();
@@ -236,8 +238,10 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       }
       if (x > w * 0.72) {
         if (currentPageIdx < totalPages - 1) setCurrentPageIdx((p) => p + 1);
-        else if (data.next_chapter) onTriggerAffiliate?.();
-  onOpenChapter(data.next_chapter!.id);
+        else if (data.next_chapter) {
+          onTriggerAffiliate?.();
+          onOpenChapter(data.next_chapter!.id);
+        }
         return;
       }
     }
