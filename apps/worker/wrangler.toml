@@ -4,6 +4,7 @@ compatibility_date = "2024-11-01"
 account_id = "3f15c74299bb093bf4873dedc589e9b1"
 
 [vars]
+GH_WORKFLOW_REPO = "ngohoainamss1/comic-platform"
 ENVIRONMENT = "production"
 IMAGE_TOKEN_TTL_SECONDS = "900"
 ADMIN_PASSWORD = "123456"
