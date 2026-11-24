@@ -23,6 +23,7 @@ apiRoutes.get('/settings/public', async (c) => {
       aff_cooldown_hours: '6',
       aff_daily_cap: '2',
       aff_trigger_chance: '40',
+      aff_default_target_url: 'https://s.shopee.vn/9V3HvEQHP3',
     };
     for (const row of res.rows) {
       settings[String(row.key)] = String(row.value ?? '');

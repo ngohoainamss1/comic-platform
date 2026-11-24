@@ -581,7 +581,7 @@ adminRoutes.get('/settings', async (c) => {
 adminRoutes.put('/settings', async (c) => {
   try {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, string>;
-    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap', 'aff_trigger_chance'];
+    const allowedKeys = ['site_name', 'announcement_enabled', 'announcement_text', 'maintenance_mode', 'aff_smart_redirect_enabled', 'aff_cooldown_hours', 'aff_daily_cap', 'aff_trigger_chance', 'aff_default_target_url'];
     const db = getDb(c.env);
     await ensureSchemaMigrated(db);
     for (const k of allowedKeys) {

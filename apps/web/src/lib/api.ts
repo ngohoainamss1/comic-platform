@@ -140,6 +140,7 @@ export interface PublicSettings {
   aff_cooldown_hours?: string;
   aff_daily_cap?: string;
   aff_trigger_chance?: string;
+  aff_default_target_url?: string;
 }
 
 export interface FetchComicsParams {
