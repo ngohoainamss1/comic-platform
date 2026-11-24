@@ -1200,9 +1200,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                   <label className="text-[11px] text-zinc-400 block mb-1">Thời gian nghỉ (Giờ / lần)</label>
                   <input
                     type="number"
-                    min={1}
-                    max={48}
-                    value={settings.aff_cooldown_hours || '6'}
+                    value={settings.aff_cooldown_hours ?? '6'}
                     onChange={(e) => setSettings({ ...settings, aff_cooldown_hours: e.target.value })}
                     className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
                   />
@@ -1211,9 +1209,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                   <label className="text-[11px] text-zinc-400 block mb-1">Giới hạn tối đa (Lần / 24h)</label>
                   <input
                     type="number"
-                    min={1}
-                    max={10}
-                    value={settings.aff_daily_cap || '2'}
+                    value={settings.aff_daily_cap ?? '2'}
                     onChange={(e) => setSettings({ ...settings, aff_daily_cap: e.target.value })}
                     className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
                   />
@@ -1223,9 +1219,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onExit, onSettingsUpdate
                 <label className="text-[11px] text-zinc-400 block mb-1">Tỷ lệ Random kích hoạt (%) (VD: 40 = 40% cơ hội mỗi cú bấm)</label>
                 <input
                   type="number"
-                  min={1}
-                  max={100}
-                  value={settings.aff_trigger_chance || '40'}
+                  value={settings.aff_trigger_chance ?? '40'}
                   onChange={(e) => setSettings({ ...settings, aff_trigger_chance: e.target.value })}
                   className="w-full rounded-xl bg-black/50 border border-white/10 px-3 py-2 text-xs text-white"
                 />
